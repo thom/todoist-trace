@@ -8,6 +8,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -142,6 +143,24 @@ def parse_args(argv: Optional[list] = None) -> argparse.Namespace:
         default=None,
         help="Path to custom config file (JSON or .env)",
     )
+    parser.add_argument(
+        "--cache-file",
+        type=str,
+        default=None,
+        help="Path to local cache file (default: .todoist_cache.json)",
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        default=False,
+        help="Disable persistent local cache",
+    )
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        default=False,
+        help="Force re-fetching all data from the API and refresh cache",
+    )
     return parser.parse_args(argv)
 
 
@@ -178,6 +197,11 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
     if not output:
         output = "todoist_trace_export.csv" if output_format == "csv" else "todoist_trace_export.md"
 
+    # 7. Cache settings
+    cache_enabled = not args.no_cache and file_cfg.get("cache_enabled", True)
+    cache_file = args.cache_file or file_cfg.get("cache_file") or ".todoist_cache.json"
+    refresh = args.refresh
+
     return {
         "token": token,
         "format": output_format,
@@ -186,7 +210,11 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         "start_date": start_date,
         "end_date": end_date,
         "output": output,
+        "cache_enabled": cache_enabled,
+        "cache_file": cache_file,
+        "refresh": refresh,
     }
+
 
 
 def fetch_projects(token: str) -> List[Dict[str, Any]]:
@@ -310,16 +338,93 @@ class ProjectTreeResolver:
         return res
 
 
+class TraceCache:
+    """Manages persistent caching of projects, tasks, and activity events."""
+
+    def __init__(self, cache_file: Optional[str] = None, enabled: bool = True):
+        self.enabled = enabled
+        self.path = Path(cache_file or ".todoist_cache.json")
+        self.projects: List[Dict[str, Any]] = []
+        self.tasks: Dict[str, Dict[str, Any]] = {}
+        self.events: Dict[str, Dict[str, Any]] = {}
+        self.last_sync: Optional[str] = None
+        if self.enabled:
+            self.load()
+
+    def load(self) -> None:
+        if not self.path.is_file():
+            return
+        try:
+            with open(self.path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                self.projects = data.get("projects", [])
+                self.tasks = data.get("tasks", {})
+                self.events = data.get("events", {})
+                self.last_sync = data.get("last_sync")
+        except Exception as e:
+            sys.stderr.write(f"Warning: Failed to load cache from {self.path}: {e}\n")
+
+    def save(self) -> None:
+        if not self.enabled:
+            return
+        try:
+            temp_path = self.path.with_suffix(".tmp")
+            data = {
+                "last_sync": datetime.now(timezone.utc).isoformat(),
+                "projects": self.projects,
+                "tasks": self.tasks,
+                "events": self.events,
+            }
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            temp_path.replace(self.path)
+        except Exception as e:
+            sys.stderr.write(f"Warning: Failed to save cache to {self.path}: {e}\n")
+
+    def get_latest_event_date(self) -> Optional[str]:
+        """Return the ISO event_date of the newest event in cache."""
+        if not self.events:
+            return None
+        return max(
+            (str(ev.get("event_date", "")) for ev in self.events.values() if ev.get("event_date")),
+            default=None,
+        )
+
+    def merge_events(self, new_events: List[Dict[str, Any]]) -> None:
+        for ev in new_events:
+            ev_id = str(ev.get("id"))
+            if ev_id:
+                self.events[ev_id] = ev
+
+    def get_all_events(self) -> List[Dict[str, Any]]:
+        return sorted(
+            self.events.values(),
+            key=lambda x: str(x.get("event_date", "")),
+            reverse=True,
+        )
+
+
 class TaskHierarchyResolver:
     """
     Resolves multi-level task parent-child hierarchies from completed activity events.
     Traces parent tasks upward to build full relative task paths.
     """
 
-    def __init__(self, token: str, preloaded_tasks: Optional[Dict[str, Dict[str, Any]]] = None):
+    def __init__(
+        self,
+        token: str,
+        preloaded_tasks: Optional[Dict[str, Dict[str, Any]]] = None,
+        cache: Optional[TraceCache] = None,
+    ):
         self.token = token
         self.headers = {"Authorization": f"Bearer {token}"}
-        self.task_cache: Dict[str, Dict[str, Any]] = preloaded_tasks or {}
+        self.cache = cache
+        # Prioritize cache tasks, fallback to preloaded
+        self.task_cache: Dict[str, Dict[str, Any]] = {}
+        if cache and cache.tasks:
+            self.task_cache.update(cache.tasks)
+        if preloaded_tasks:
+            self.task_cache.update(preloaded_tasks)
 
     def lookup_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Lookup task content and parent_id, caching results."""
@@ -337,15 +442,20 @@ class TaskHierarchyResolver:
                     "parent_id": str(data["parent_id"]) if data.get("parent_id") else None,
                 }
                 self.task_cache[tid] = task_info
+                if self.cache:
+                    self.cache.tasks[tid] = task_info
                 return task_info
             elif resp.status_code == 404:
                 fallback = {"content": f"[Task {tid}]", "parent_id": None}
                 self.task_cache[tid] = fallback
+                if self.cache:
+                    self.cache.tasks[tid] = fallback
                 return fallback
         except requests.exceptions.RequestException:
             pass
 
         return None
+
 
     def resolve(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -548,33 +658,68 @@ def main(argv: Optional[list] = None) -> int:
         return 1
 
     masked_token = settings["token"][:4] + "..." + settings["token"][-4:] if len(settings["token"]) > 8 else "***"
-    print(f"Connecting to Todoist API (token: {masked_token})...")
-    try:
-        projects = fetch_projects(settings["token"])
-    except (ValueError, RuntimeError) as e:
-        sys.stderr.write(f"Error: {e}\n")
-        return 1
 
-    active = [p for p in projects if not p.get("is_archived", False) and not p.get("is_deleted", False)]
-    archived = [p for p in projects if p.get("is_archived", False)]
-    print(f"Successfully authenticated! Retrieved {len(projects)} projects ({len(active)} active, {len(archived)} archived).")
+    # 1. Initialize Cache
+    cache = TraceCache(
+        cache_file=settings.get("cache_file"),
+        enabled=settings.get("cache_enabled", True),
+    )
+
+    # 2. Fetch or load projects
+    if cache.enabled and cache.projects and not settings.get("refresh"):
+        print(f"Using {len(cache.projects)} cached projects.")
+        projects = cache.projects
+    else:
+        print(f"Connecting to Todoist API (token: {masked_token})...")
+        try:
+            projects = fetch_projects(settings["token"])
+            if cache.enabled:
+                cache.projects = projects
+        except (ValueError, RuntimeError) as e:
+            sys.stderr.write(f"Error: {e}\n")
+            return 1
+
+        active = [p for p in projects if not p.get("is_archived", False) and not p.get("is_deleted", False)]
+        archived = [p for p in projects if p.get("is_archived", False)]
+        print(f"Successfully authenticated! Retrieved {len(projects)} projects ({len(active)} active, {len(archived)} archived).")
 
     project_resolver = ProjectTreeResolver(projects)
 
+    # 3. Fetch completed activities (incremental if cached)
+    date_from = None
+    if settings.get("start_date"):
+        date_from = f"{settings['start_date']}T00:00:00Z"
+    elif cache.enabled and cache.events and not settings.get("refresh"):
+        latest_cached = cache.get_latest_event_date()
+        if latest_cached:
+            date_from = latest_cached
+            print(f"Incremental sync: checking for events newer than {latest_cached}...")
+
+    date_to = f"{settings['end_date']}T23:59:59Z" if settings.get("end_date") else None
+
     print("Fetching completed activities (read-only)...")
     try:
-        date_from = f"{settings['start_date']}T00:00:00Z" if settings.get("start_date") else None
-        date_to = f"{settings['end_date']}T23:59:59Z" if settings.get("end_date") else None
-        events = fetch_completed_activities(settings["token"], date_from=date_from, date_to=date_to)
+        new_events = fetch_completed_activities(settings["token"], date_from=date_from, date_to=date_to)
+        if cache.enabled:
+            cache.merge_events(new_events)
+            all_events = cache.get_all_events()
+            print(f"Retrieved {len(new_events)} new events ({len(all_events)} total events in cache).")
+        else:
+            all_events = new_events
+            print(f"Retrieved {len(all_events)} completed activity events.")
     except (ValueError, RuntimeError) as e:
         sys.stderr.write(f"Error: {e}\n")
         return 1
 
-    print(f"Retrieved {len(events)} completed activity events.")
+    # 4. Resolve tasks
+    task_resolver = TaskHierarchyResolver(settings["token"], cache=cache if cache.enabled else None)
+    all_records = build_trace_records(all_events, project_resolver, task_resolver)
 
-    task_resolver = TaskHierarchyResolver(settings["token"])
-    all_records = build_trace_records(events, project_resolver, task_resolver)
+    # Save updated cache (including newly resolved tasks)
+    if cache.enabled:
+        cache.save()
 
+    # 5. Apply filters
     filtered_records = filter_records(
         all_records,
         category=settings["category"],
@@ -585,6 +730,7 @@ def main(argv: Optional[list] = None) -> int:
     print(f"Filters applied (Category: {settings['category']}, Start: {settings['start_date']}, End: {settings['end_date']}):")
     print(f"  {len(filtered_records)} of {len(all_records)} records matched.")
 
+    # Show a few sample filtered records
     print("\nSample matched records:")
     for r in filtered_records[:3]:
         full_proj = f"{r['top_level_project']}" + (f" / {r['project_path']}" if r['project_path'] else "")
@@ -595,4 +741,5 @@ def main(argv: Optional[list] = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
 
