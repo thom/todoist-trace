@@ -137,3 +137,50 @@ def fetch_completed_activities(
             break
 
     return events
+
+
+def fetch_sections(token: str) -> List[Dict[str, Any]]:
+    """
+    Fetch all active sections from the Todoist API using strictly read-only HTTP GET.
+    Endpoint: https://api.todoist.com/api/v1/sections
+    """
+    url = "https://api.todoist.com/api/v1/sections"
+    headers = {
+        "Authorization": f"Bearer {token}",
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"Network error fetching sections: {e}") from e
+
+    if resp.status_code == 401:
+        raise ValueError("Invalid Todoist API token.")
+    if resp.status_code != 200:
+        raise RuntimeError(f"Todoist API returned HTTP {resp.status_code}: {resp.text}")
+
+    data = resp.json()
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        return data.get("results", [])
+    return []
+
+
+def fetch_section(token: str, section_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetch a single section by its ID using strictly read-only HTTP GET.
+    Endpoint: https://api.todoist.com/api/v1/sections/{section_id}
+    """
+    url = f"https://api.todoist.com/api/v1/sections/{section_id}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+    except requests.exceptions.RequestException:
+        return None
+
+    if resp.status_code == 200:
+        data = resp.json()
+        return data if isinstance(data, dict) else None
+    return None

@@ -14,6 +14,8 @@ class TestModularPackageStructure:
             "DEFAULT_JSON_CACHE_PATH",
             "ProjectTreeResolver",
             "SQLiteTraceCache",
+            "SectionCacheDict",
+            "SectionResolver",
             "TaskCacheDict",
             "TaskHierarchyResolver",
             "TraceCache",
@@ -25,6 +27,8 @@ class TestModularPackageStructure:
             "export_markdown",
             "fetch_completed_activities",
             "fetch_projects",
+            "fetch_section",
+            "fetch_sections",
             "filter_records",
             "format_event_datetime",
             "format_task_bullets",
@@ -41,17 +45,34 @@ class TestModularPackageStructure:
             assert hasattr(todoist_trace, name), f"Missing export: {name}"
 
     def test_direct_submodule_imports(self):
-        from todoist_trace.api import fetch_projects, fetch_completed_activities
-        from todoist_trace.cache import SQLiteTraceCache, TraceCache, create_cache
+        from todoist_trace.api import (
+            fetch_completed_activities,
+            fetch_projects,
+            fetch_section,
+            fetch_sections,
+        )
+        from todoist_trace.cache import (
+            SQLiteTraceCache,
+            SectionCacheDict,
+            TaskCacheDict,
+            TraceCache,
+            create_cache,
+        )
         from todoist_trace.cli import parse_args, resolve_settings
         from todoist_trace.config import DEFAULT_APP_DIR, load_config
         from todoist_trace.exporters import export_csv, export_markdown, format_task_bullets
         from todoist_trace.filters import filter_records
         from todoist_trace.main import main
-        from todoist_trace.resolvers import ProjectTreeResolver, TaskHierarchyResolver
+        from todoist_trace.resolvers import (
+            ProjectTreeResolver,
+            SectionResolver,
+            TaskHierarchyResolver,
+        )
 
         assert callable(fetch_projects)
         assert callable(fetch_completed_activities)
+        assert callable(fetch_sections)
+        assert callable(fetch_section)
         assert callable(create_cache)
         assert callable(parse_args)
         assert callable(resolve_settings)
@@ -62,4 +83,5 @@ class TestModularPackageStructure:
         assert callable(filter_records)
         assert callable(main)
         assert callable(ProjectTreeResolver)
+        assert callable(SectionResolver)
         assert callable(TaskHierarchyResolver)

@@ -7,6 +7,7 @@ A robust, read-only Python CLI tool to export Todoist activity logs into structu
 ## Features
 
 - **Multi-Level Project Tree Resolution**: Automatically traverses project hierarchies of arbitrary depth (e.g., `work-areas / admin / email / vendor-contracts`) to extract the root ancestor and relative project paths. Handles archived projects seamlessly.
+- **Project Section Resolution**: Automatically resolves Todoist section IDs to section names (e.g. `Sprint Deliverables`, `Sprint 1`), grouping tasks under section subheadings in Markdown and providing a dedicated `section` column in CSV exports.
 - **Recursive Task Ancestry Resolution**: Reconstructs deep parent-child subtask relationships (e.g., `Sprint Planning / Backend / Authentication Service`) by querying and caching task parentage.
 - **Local Timezone Normalization**: Automatically converts Todoist UTC activity timestamps into the user's local timezone (or configured IANA timezone, e.g. `Europe/Zurich`), ensuring cross-midnight tasks are attributed to the true local calendar day.
 - **Interactive Visual Progress Reporting**:
@@ -14,12 +15,12 @@ A robust, read-only Python CLI tool to export Todoist activity logs into structu
   - Live Unicode block progress bar (`[██████████░░░░░░░░]`), Braille animation spinner, calendar day completion percentage, throughput (`tasks/s`), and remaining time countdown (`ETA MM:SS`).
   - Automatically adapts to terminal width (`shutil.get_terminal_size()`) and collapses to clean milestone logs when piped or running in CI (`NO_COLOR` standard compliant).
 - **Hierarchical Markdown Export**:
-  - **Nested Headings**: Structured heading levels by project depth (`## Date` -> `### Root Project` -> `#### Sub-project`).
+  - **Nested Headings**: Structured heading levels by project depth and section (`## Date` -> `### Root Project` -> `#### Sub-project` -> `##### Section`).
   - **Task Bullet Hierarchies**: Renders parent tasks with indented sub-bullets for completed subtasks.
   - **Flat Headings & Paths**: Optional flat representation with slash-separated headings (`#### admin/email`) and flat bullet paths.
-- **RFC 4180 Compliant CSV Export**: Clean, standard CSV output escaping commas, quotes, and newlines.
+- **RFC 4180 Compliant CSV Export**: Clean, standard CSV output escaping commas, quotes, and newlines (`top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id`).
 - **Interval-Aware SQLite Cache Engine**:
-  - Automatically caches projects, tasks, completed events, and synchronized date ranges in `~/.todoist-trace/cache.db`.
+  - Automatically caches projects, sections, tasks, completed events, and synchronized date ranges in `~/.todoist-trace/cache.db`.
   - Coalesces contiguous intervals across runs, avoiding redundant API calls while tracking zero-activity days permanently.
   - B-tree indexing on `event_date` for sub-millisecond date range queries.
   - Automatic migration from legacy `cache.json` without data loss.
@@ -46,16 +47,17 @@ todoist-trace/
 │   ├── filters.py              # Category and date range filtering logic
 │   ├── main.py                 # Pipeline execution and orchestration
 │   ├── progress.py             # Visual terminal progress reporter, day tracking, ETA
-│   └── resolvers.py            # Recursive project tree and task hierarchy resolvers
-├── tests/                      # Modular test suite (85 tests)
+│   └── resolvers.py            # Recursive project tree, section, and task hierarchy resolvers
+├── tests/                      # Modular test suite (109 tests)
 │   ├── conftest.py             # Shared fixtures and path configuration
+│   ├── test_api.py             # Read-only REST API client and section endpoint tests
 │   ├── test_cache.py           # SQLite, interval arithmetic, and auto-migration tests
 │   ├── test_cli_config.py      # Argument and configuration precedence tests
 │   ├── test_exporters.py       # CSV and Markdown formatting tests
 │   ├── test_filters.py         # Category and date filtering tests
 │   ├── test_package.py         # Submodule and public export tests
 │   ├── test_progress.py        # Progress bars, day percentage, and ETA tests
-│   └── test_resolvers.py       # Project and task tree resolution tests
+│   └── test_resolvers.py       # Project, section, and task tree resolution tests
 ├── todoist_trace.py            # Root CLI launcher script (backward compatible)
 ├── pytest.ini                  # Pytest configuration
 ├── AGENTS.md                   # Repository conventions and guidelines
@@ -251,9 +253,9 @@ python3 todoist_trace.py --no-cache -f markdown -o trace_live.md
 Conforms strictly to RFC 4180 with standard headers:
 
 ```csv
-top_level_project,project_path,date,time,task_path,parent_task_id,project_id,event_id
-work,sprint-planning,2026-09-30,10:00:00,Sprint Deliverables / Services / Auth,p2,p1,ev_101
-personal,finances/taxes,2026-09-30,14:20:00,"Submit quarterly return, Q3",,proj_99,ev_102
+top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id
+work,sprint-planning,Sprint 1,2026-09-30,10:00:00,Sprint Deliverables / Services / Auth,p2,p1,ev_101
+personal,finances/taxes,,2026-09-30,14:20:00,"Submit quarterly return, Q3",,proj_99,ev_102
 ```
 
 ---
@@ -269,6 +271,13 @@ CREATE TABLE IF NOT EXISTS projects (
     name TEXT,
     is_archived INTEGER,
     is_deleted INTEGER,
+    payload TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sections (
+    id TEXT PRIMARY KEY,
+    project_id TEXT,
+    name TEXT,
     payload TEXT
 );
 
@@ -290,8 +299,10 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_date ON events(event_date);
 
 CREATE TABLE IF NOT EXISTS sync_ranges (
-    start_date TEXT,
-    end_date TEXT
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    is_genesis INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS meta (

@@ -12,12 +12,13 @@ from typing import Any, Dict, List
 def generate_csv(records: List[Dict[str, Any]]) -> str:
     """
     Generate CSV formatted text for trace records according to RFC 4180.
-    Headers: top_level_project,project_path,date,time,task_path,parent_task_id,project_id,event_id
+    Headers: top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id
     """
     output = io.StringIO()
     fieldnames = [
         "top_level_project",
         "project_path",
+        "section",
         "date",
         "time",
         "task_path",
@@ -31,6 +32,7 @@ def generate_csv(records: List[Dict[str, Any]]) -> str:
         writer.writerow([
             r.get("top_level_project", ""),
             r.get("project_path", ""),
+            r.get("section", ""),
             r.get("date", ""),
             r.get("time", ""),
             r.get("task_path", ""),
@@ -81,6 +83,51 @@ def format_task_bullets(records_in_group: List[Dict[str, Any]], task_style: str 
         return res
 
     return render_tree(root_tasks)
+
+
+def format_records_with_sections(
+    records: List[Dict[str, Any]],
+    parent_h_level: int,
+    task_style: str = "nested",
+) -> List[str]:
+    """
+    Format records, grouping by section if any records have a section.
+    Unsectioned tasks appear first without a section header.
+    Sectioned tasks appear under header with level min(parent_h_level + 1, 6).
+    """
+    if not records:
+        return []
+
+    has_sections = any(bool(r.get("section")) for r in records)
+    if not has_sections:
+        return format_task_bullets(records, task_style=task_style)
+
+    res: List[str] = []
+    unsectioned: List[Dict[str, Any]] = []
+    sections_map: Dict[str, List[Dict[str, Any]]] = {}
+
+    for r in records:
+        sec = r.get("section")
+        if not sec:
+            unsectioned.append(r)
+        else:
+            if sec not in sections_map:
+                sections_map[sec] = []
+            sections_map[sec].append(r)
+
+    if unsectioned:
+        res.extend(format_task_bullets(unsectioned, task_style=task_style))
+
+    sec_h_level = min(parent_h_level + 1, 6)
+    hashes = "#" * sec_h_level
+
+    for sec_name, sec_records in sections_map.items():
+        if res and res[-1] != "":
+            res.append("")
+        res.append(f"{hashes} {sec_name}")
+        res.extend(format_task_bullets(sec_records, task_style=task_style))
+
+    return res
 
 
 def generate_markdown(
@@ -134,7 +181,7 @@ def generate_markdown(
 
                 # 1. Direct tasks under top_level_project (empty project_path)
                 if "" in paths_map:
-                    lines.extend(format_task_bullets(paths_map[""], task_style=task_style))
+                    lines.extend(format_records_with_sections(paths_map[""], parent_h_level=3, task_style=task_style))
                     lines.append("")
 
                 # 2. Sub-projects
@@ -144,7 +191,7 @@ def generate_markdown(
                     if "" not in paths_map and len(lines) > 0 and lines[-1] == f"### {top_proj}":
                         lines.append("")
                     lines.append(f"#### {p_path}")
-                    lines.extend(format_task_bullets(recs, task_style=task_style))
+                    lines.extend(format_records_with_sections(recs, parent_h_level=4, task_style=task_style))
                     lines.append("")
 
             else:  # nested style
@@ -173,9 +220,11 @@ def generate_markdown(
                         h_level = min(3 + node.depth, 6)
                         hashes = "#" * h_level
                         lines.append(f"{hashes} {node.name}")
+                    else:
+                        h_level = 3
 
                     if node.records:
-                        lines.extend(format_task_bullets(node.records, task_style=task_style))
+                        lines.extend(format_records_with_sections(node.records, parent_h_level=h_level, task_style=task_style))
                         lines.append("")
                     elif node.depth > 0 and node.children:
                         lines.append("")

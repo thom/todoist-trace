@@ -104,6 +104,81 @@ class ProjectTreeResolver:
         return res
 
 
+class SectionResolver:
+    """
+    Resolves section ID to section name using local preloaded/cached sections
+    and on-demand API fallback.
+    """
+
+    def __init__(
+        self,
+        token: Optional[str] = None,
+        preloaded_sections: Optional[Union[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]] = None,
+        cache: Optional[Any] = None,
+    ):
+        self.token = token
+        self.headers = {"Authorization": f"Bearer {token}"} if token else {}
+        self.cache = cache
+        self.section_cache: Dict[str, Dict[str, Any]] = {}
+        if cache and hasattr(cache, "sections") and cache.sections:
+            self.section_cache.update(cache.sections)
+        if preloaded_sections:
+            if isinstance(preloaded_sections, list):
+                for s in preloaded_sections:
+                    if s.get("id"):
+                        self.section_cache[str(s["id"])] = s
+            elif isinstance(preloaded_sections, dict):
+                self.section_cache.update(preloaded_sections)
+
+    def lookup_section(self, section_id: str) -> Optional[Dict[str, Any]]:
+        """Lookup section dictionary by id, caching results."""
+        sid = str(section_id)
+        if sid in self.section_cache:
+            return self.section_cache[sid]
+
+        if not self.token:
+            return None
+
+        url = f"https://api.todoist.com/api/v1/sections/{sid}"
+        try:
+            resp = requests.get(url, headers=self.headers, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, dict):
+                    sec_info = {
+                        "id": sid,
+                        "project_id": str(data.get("project_id", "")),
+                        "name": data.get("name", f"[Section {sid}]"),
+                    }
+                    self.section_cache[sid] = sec_info
+                    if self.cache and hasattr(self.cache, "sections"):
+                        self.cache.sections[sid] = sec_info
+                    return sec_info
+            elif resp.status_code == 404:
+                fallback = {"id": sid, "project_id": "", "name": f"[Section {sid}]"}
+                self.section_cache[sid] = fallback
+                if self.cache and hasattr(self.cache, "sections"):
+                    self.cache.sections[sid] = fallback
+                return fallback
+        except requests.exceptions.RequestException:
+            pass
+
+        return None
+
+    def resolve(self, section_id: Optional[Any]) -> str:
+        """
+        Resolve section_id to section name.
+        Returns empty string if section_id is None or empty.
+        """
+        if not section_id:
+            return ""
+        sid = str(section_id)
+        sec = self.lookup_section(sid)
+        if sec:
+            return sec.get("name", f"[Section {sid}]")
+        return f"[Section {sid}]"
+
+
 class TaskHierarchyResolver:
     """
     Resolves multi-level task parent-child hierarchies from completed activity events.
@@ -167,6 +242,7 @@ class TaskHierarchyResolver:
                 "task_levels": List[str],  # e.g. ["Root", "Subtask", "Leaf"]
                 "parent_task_id": str,
                 "project_id": str,
+                "section_id": str,
                 "event_id": str,
                 "date": str,               # YYYY-MM-DD
                 "time": str,               # HH:MM:SS
@@ -176,6 +252,8 @@ class TaskHierarchyResolver:
         current_title = extra.get("content") or f"[Task {event.get('object_id', 'unknown')}]"
         raw_parent_id = extra.get("parent_id") or event.get("parent_item_id")
         parent_task_id = str(raw_parent_id) if raw_parent_id else ""
+        raw_section_id = extra.get("section_id") or event.get("section_id")
+        section_id = str(raw_section_id) if raw_section_id else ""
 
         event_date_str = str(event.get("event_date", ""))
         date_part, time_part = format_event_datetime(event_date_str, tz=self.tz)
@@ -186,6 +264,7 @@ class TaskHierarchyResolver:
                 "task_levels": [current_title],
                 "parent_task_id": "",
                 "project_id": str(event.get("parent_project_id", "")),
+                "section_id": section_id,
                 "event_id": str(event.get("id", "")),
                 "date": date_part,
                 "time": time_part,
@@ -214,6 +293,7 @@ class TaskHierarchyResolver:
             "task_levels": full_levels,
             "parent_task_id": parent_task_id,
             "project_id": str(event.get("parent_project_id", "")),
+            "section_id": section_id,
             "event_id": str(event.get("id", "")),
             "date": date_part,
             "time": time_part,
@@ -224,6 +304,7 @@ def build_trace_records(
     events: List[Dict[str, Any]],
     project_resolver: ProjectTreeResolver,
     task_resolver: TaskHierarchyResolver,
+    section_resolver: Optional[SectionResolver] = None,
     progress_cb: Optional[Callable[[int, int], None]] = None,
 ) -> List[Dict[str, Any]]:
     """Combine activity events with project and task resolvers into unified trace records."""
@@ -232,10 +313,13 @@ def build_trace_records(
     for idx, ev in enumerate(events, 1):
         t_res = task_resolver.resolve(ev)
         p_res = project_resolver.resolve(t_res["project_id"])
+        sec_name = section_resolver.resolve(t_res.get("section_id")) if section_resolver else ""
         records.append({
             "top_level_project": p_res["top_level_project"],
             "project_path": p_res["project_path"],
             "project_levels": p_res["project_levels"],
+            "section": sec_name,
+            "section_id": t_res.get("section_id", ""),
             "date": t_res["date"],
             "time": t_res["time"],
             "task_path": t_res["task_path"],

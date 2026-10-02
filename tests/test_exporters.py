@@ -19,13 +19,13 @@ class TestExporters:
         lines = csv_out.strip().split("\n")
 
         # Verify header
-        expected_header = "top_level_project,project_path,date,time,task_path,parent_task_id,project_id,event_id"
+        expected_header = "top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id"
         assert lines[0] == expected_header
         assert len(lines) == 4
 
         # Verify RFC 4180 escaping on quotes & commas
         assert '"Buy ""groceries"", apples & milk"' in lines[3]
-        assert "work-areas,admin/email,2026-09-15,14:25:00,Reply to vendor requests,,proj_123,ev_002" in lines[1] or lines[2]
+        assert "work-areas,admin/email,,2026-09-15,14:25:00,Reply to vendor requests,,proj_123,ev_002" in lines[1] or lines[2]
 
     def test_export_csv_file_creation(self, sample_exporter_records, tmp_path):
         out_file = tmp_path / "subdir" / "export.csv"
@@ -33,7 +33,7 @@ class TestExporters:
 
         assert out_file.is_file()
         content = out_file.read_text(encoding="utf-8")
-        assert "top_level_project,project_path,date" in content
+        assert "top_level_project,project_path,section,date" in content
         assert "ev_001" in content
 
     def test_generate_markdown_nested_style(self, sample_exporter_records):
@@ -86,7 +86,7 @@ class TestExporters:
     def test_empty_records(self, tmp_path):
         assert generate_markdown([]) == ""
         csv_empty = generate_csv([])
-        assert csv_empty.strip() == "top_level_project,project_path,date,time,task_path,parent_task_id,project_id,event_id"
+        assert csv_empty.strip() == "top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id"
 
     def test_generate_markdown_task_bullet_hierarchy(self):
         records = [
@@ -186,5 +186,95 @@ class TestExporters:
         assert "- Late Night Wrapup" in md
 
         csv_out = generate_csv(records)
-        assert "Work,,2026-10-01,00:15:00,Early Morning Deliverable,,p1,e1" in csv_out
-        assert "Work,,2026-10-01,23:45:00,Late Night Wrapup,,p1,e2" in csv_out
+        assert "Work,,,2026-10-01,00:15:00,Early Morning Deliverable,,p1,e1" in csv_out
+        assert "Work,,,2026-10-01,23:45:00,Late Night Wrapup,,p1,e2" in csv_out
+
+    def test_generate_csv_with_populated_section(self):
+        records = [
+            {
+                "top_level_project": "Work",
+                "project_path": "AI Tools",
+                "section": "Sprint 1",
+                "date": "2026-10-02",
+                "time": "14:00:00",
+                "task_path": "Implement tools",
+                "parent_task_id": "",
+                "project_id": "proj_1",
+                "event_id": "ev_1",
+            }
+        ]
+        csv_out = generate_csv(records)
+        assert "Work,AI Tools,Sprint 1,2026-10-02,14:00:00,Implement tools,,proj_1,ev_1" in csv_out
+
+    def test_generate_markdown_with_sections_nested_style(self):
+        records = [
+            {
+                "top_level_project": "Work",
+                "project_path": "Infrastructure",
+                "project_levels": ["Infrastructure"],
+                "section": "Sprint 1",
+                "date": "2026-10-02",
+                "time": "14:00:00",
+                "task_path": "Setup server",
+                "task_levels": ["Setup server"],
+                "parent_task_id": "",
+                "project_id": "proj_1",
+                "event_id": "ev_1",
+            },
+            {
+                "top_level_project": "Work",
+                "project_path": "Infrastructure",
+                "project_levels": ["Infrastructure"],
+                "section": "",
+                "date": "2026-10-02",
+                "time": "13:00:00",
+                "task_path": "General maintenance",
+                "task_levels": ["General maintenance"],
+                "parent_task_id": "",
+                "project_id": "proj_1",
+                "event_id": "ev_2",
+            },
+        ]
+        md = generate_markdown(records, style="nested")
+        assert "### Work" in md
+        assert "#### Infrastructure" in md
+        # General maintenance is unsectioned and appears directly under Infrastructure
+        assert "- General maintenance" in md
+        # Section heading at level 5 (parent h4 + 1)
+        assert "##### Sprint 1" in md
+        assert "- Setup server" in md
+
+    def test_generate_markdown_with_sections_flat_style(self):
+        records = [
+            {
+                "top_level_project": "Work",
+                "project_path": "Infrastructure",
+                "section": "Sprint 1",
+                "date": "2026-10-02",
+                "time": "14:00:00",
+                "task_path": "Setup server",
+                "parent_task_id": "",
+                "project_id": "proj_1",
+                "event_id": "ev_1",
+            },
+            {
+                "top_level_project": "Work",
+                "project_path": "",
+                "section": "Quick Hits",
+                "date": "2026-10-02",
+                "time": "12:00:00",
+                "task_path": "Quick task",
+                "parent_task_id": "",
+                "project_id": "proj_0",
+                "event_id": "ev_0",
+            },
+        ]
+        md = generate_markdown(records, style="flat")
+        assert "### Work" in md
+        # Quick hits is under top level Work (h3 + 1 = h4)
+        assert "#### Quick Hits" in md
+        assert "- Quick task" in md
+        # Infrastructure is at h4, so its section is at h5
+        assert "#### Infrastructure" in md
+        assert "##### Sprint 1" in md
+        assert "- Setup server" in md

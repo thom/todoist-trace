@@ -6,7 +6,7 @@ import sys
 from datetime import datetime, timezone
 from typing import Optional
 
-from .api import fetch_completed_activities, fetch_projects
+from .api import fetch_completed_activities, fetch_projects, fetch_sections
 from .cache import (
     create_cache,
     normalize_end_date,
@@ -16,7 +16,12 @@ from .cli import parse_args, resolve_settings
 from .exporters import export_csv, export_markdown
 from .filters import filter_records
 from .progress import FancyProgressReporter
-from .resolvers import ProjectTreeResolver, TaskHierarchyResolver, build_trace_records
+from .resolvers import (
+    ProjectTreeResolver,
+    SectionResolver,
+    TaskHierarchyResolver,
+    build_trace_records,
+)
 
 
 def main(argv: Optional[list] = None) -> int:
@@ -93,7 +98,24 @@ def main(argv: Optional[list] = None) -> int:
         archived = [p for p in projects if p.get("is_archived", False)]
         reporter.finish_projects(len(active), len(archived))
 
+    # Preload sections
+    if cache.enabled and hasattr(cache, "sections") and cache.sections and not settings.get("refresh"):
+        sections = cache.sections
+    else:
+        try:
+            sections_list = fetch_sections(settings["token"])
+            if cache.enabled:
+                cache.sections = sections_list
+            sections = cache.sections if cache.enabled else {s["id"]: s for s in sections_list if s.get("id")}
+        except Exception:
+            sections = cache.sections if (cache.enabled and hasattr(cache, "sections")) else {}
+
     project_resolver = ProjectTreeResolver(projects)
+    section_resolver = SectionResolver(
+        token=settings["token"],
+        preloaded_sections=sections,
+        cache=cache if cache.enabled else None,
+    )
 
     # 3. Fetch completed activities (gap-filling range-aware sync)
     req_start = settings.get("start_date")
@@ -145,13 +167,14 @@ def main(argv: Optional[list] = None) -> int:
     else:
         all_events = new_events
 
-    # 4. Resolve tasks
+    # 4. Resolve tasks and sections
     task_resolver = TaskHierarchyResolver(settings["token"], cache=cache if cache.enabled else None, tz=tz)
     reporter.start_resolve(len(all_events))
     all_records = build_trace_records(
         all_events,
         project_resolver,
         task_resolver,
+        section_resolver=section_resolver,
         progress_cb=lambda cur, tot: reporter.update_resolve(cur, tot),
     )
     reporter.finish_resolve(len(all_records))
@@ -194,7 +217,8 @@ def main(argv: Optional[list] = None) -> int:
         reporter.print_text("\nSample matched records:")
         for r in filtered_records[:3]:
             full_proj = f"{r['top_level_project']}" + (f" / {r['project_path']}" if r['project_path'] else "")
-            reporter.print_text(f"  [{r['date']} {r['time']}] {full_proj} -> {r['task_path']}")
+            sec_part = f" [{r['section']}]" if r.get('section') else ""
+            reporter.print_text(f"  [{r['date']} {r['time']}] {full_proj}{sec_part} -> {r['task_path']}")
 
     return 0
 

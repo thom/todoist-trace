@@ -243,3 +243,140 @@ class TestTaskHierarchyResolver:
         import pytest
         with pytest.raises(ValueError, match="Invalid timezone"):
             TaskHierarchyResolver(token="dummy_token", tz="Invalid/Zone_Name")
+
+    def test_task_hierarchy_resolver_extracts_section_id(self):
+        resolver = TaskHierarchyResolver(token="dummy_token")
+        event = {
+            "id": "e_sec",
+            "object_id": "t_sec",
+            "event_date": "2026-10-02T12:00:00Z",
+            "parent_project_id": "proj_1",
+            "extra_data": {
+                "content": "Sectioned Task",
+                "parent_id": None,
+                "section_id": "sec_123",
+            },
+        }
+        res = resolver.resolve(event)
+        assert res["section_id"] == "sec_123"
+
+        # Direct event section_id fallback
+        event_direct = {
+            "id": "e_sec2",
+            "object_id": "t_sec2",
+            "event_date": "2026-10-02T12:00:00Z",
+            "parent_project_id": "proj_1",
+            "section_id": "sec_456",
+            "extra_data": {"content": "Direct Sec Task"},
+        }
+        res2 = resolver.resolve(event_direct)
+        assert res2["section_id"] == "sec_456"
+
+
+class TestSectionResolver:
+    """Test suite for SectionResolver."""
+
+    def test_resolve_empty_and_none(self):
+        from todoist_trace.resolvers import SectionResolver
+        resolver = SectionResolver(token="dummy")
+        assert resolver.resolve(None) == ""
+        assert resolver.resolve("") == ""
+
+    def test_resolve_from_preloaded_list(self):
+        from todoist_trace.resolvers import SectionResolver
+        sections = [
+            {"id": "s1", "name": "Backlog", "project_id": "p1"},
+            {"id": "s2", "name": "In Progress", "project_id": "p1"},
+        ]
+        resolver = SectionResolver(preloaded_sections=sections)
+        assert resolver.resolve("s1") == "Backlog"
+        assert resolver.resolve("s2") == "In Progress"
+        assert resolver.resolve("s3") == "[Section s3]"
+
+    def test_resolve_from_preloaded_dict(self):
+        from todoist_trace.resolvers import SectionResolver
+        sections = {
+            "s1": {"id": "s1", "name": "Sprint 1", "project_id": "p1"},
+        }
+        resolver = SectionResolver(preloaded_sections=sections)
+        assert resolver.resolve("s1") == "Sprint 1"
+
+    @patch("requests.get")
+    def test_lookup_section_api_success(self, mock_get):
+        from todoist_trace.resolvers import SectionResolver
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "id": "s_live",
+            "project_id": "p1",
+            "name": "Live Section",
+        }
+        mock_get.return_value = mock_resp
+
+        cache_mock = MagicMock()
+        cache_mock.sections = {}
+
+        resolver = SectionResolver(token="dummy_token", cache=cache_mock)
+        sec_name = resolver.resolve("s_live")
+
+        assert sec_name == "Live Section"
+        assert "s_live" in resolver.section_cache
+        assert cache_mock.sections["s_live"]["name"] == "Live Section"
+
+    @patch("requests.get")
+    def test_lookup_section_api_404(self, mock_get):
+        from todoist_trace.resolvers import SectionResolver
+        mock_resp = MagicMock()
+        mock_resp.status_code = 404
+        mock_get.return_value = mock_resp
+
+        resolver = SectionResolver(token="dummy_token")
+        sec_name = resolver.resolve("s_missing")
+
+        assert sec_name == "[Section s_missing]"
+        assert resolver.section_cache["s_missing"]["name"] == "[Section s_missing]"
+
+    @patch("requests.get")
+    def test_lookup_section_network_error(self, mock_get):
+        from todoist_trace.resolvers import SectionResolver
+        import requests
+        mock_get.side_effect = requests.exceptions.RequestException("Timeout")
+
+        resolver = SectionResolver(token="dummy_token")
+        assert resolver.resolve("s_err") == "[Section s_err]"
+
+    def test_lookup_section_without_token(self):
+        from todoist_trace.resolvers import SectionResolver
+        resolver = SectionResolver(token=None)
+        assert resolver.resolve("s_no_token") == "[Section s_no_token]"
+
+    def test_build_trace_records_with_section_resolver(self):
+        from todoist_trace.resolvers import (
+            ProjectTreeResolver,
+            SectionResolver,
+            TaskHierarchyResolver,
+            build_trace_records,
+        )
+        projects = [{"id": "p1", "name": "Work", "parent_id": None}]
+        p_resolver = ProjectTreeResolver(projects)
+        t_resolver = TaskHierarchyResolver(token="dummy")
+        s_resolver = SectionResolver(preloaded_sections=[{"id": "sec_1", "name": "Sprint 1"}])
+
+        events = [
+            {
+                "id": "e1",
+                "object_id": "t1",
+                "event_date": "2026-10-02T10:00:00Z",
+                "parent_project_id": "p1",
+                "extra_data": {
+                    "content": "Deploy release",
+                    "section_id": "sec_1",
+                },
+            }
+        ]
+        records = build_trace_records(events, p_resolver, t_resolver, section_resolver=s_resolver)
+        assert len(records) == 1
+        assert records[0]["section"] == "Sprint 1"
+        assert records[0]["section_id"] == "sec_1"
+        assert records[0]["top_level_project"] == "Work"
+        assert records[0]["task_path"] == "Deploy release"

@@ -5,9 +5,15 @@ and task hierarchy resolution.
 
 import requests
 
-from .api import fetch_completed_activities, fetch_projects
+from .api import (
+    fetch_completed_activities,
+    fetch_projects,
+    fetch_section,
+    fetch_sections,
+)
 from .cache import (
     SQLiteTraceCache,
+    SectionCacheDict,
     TaskCacheDict,
     TraceCache,
     calculate_missing_intervals,
@@ -41,6 +47,7 @@ from .progress import (
 )
 from .resolvers import (
     ProjectTreeResolver,
+    SectionResolver,
     TaskHierarchyResolver,
     build_trace_records,
     format_event_datetime,
@@ -54,6 +61,8 @@ __all__ = [
     "FancyProgressReporter",
     "ProjectTreeResolver",
     "SQLiteTraceCache",
+    "SectionCacheDict",
+    "SectionResolver",
     "TaskCacheDict",
     "TaskHierarchyResolver",
     "TraceCache",
@@ -65,6 +74,8 @@ __all__ = [
     "export_markdown",
     "fetch_completed_activities",
     "fetch_projects",
+    "fetch_section",
+    "fetch_sections",
     "filter_records",
     "format_event_datetime",
     "format_task_bullets",

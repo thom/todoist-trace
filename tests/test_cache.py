@@ -528,4 +528,63 @@ class TestCacheEdgeCases:
 
         cache.close()
 
+    def test_sqlite_sections_persistence_and_reload(self, tmp_path):
+        db_file = tmp_path / "sections.db"
+        cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+
+        # 1. Bulk set via list
+        cache.sections = [
+            {"id": "sec_1", "project_id": "p1", "name": "Sprint 1"}
+        ]
+        assert cache.sections["sec_1"]["name"] == "Sprint 1"
+
+        # 2. Individual insert via SectionCacheDict
+        cache.sections["sec_2"] = {"id": "sec_2", "project_id": "p1", "name": "Sprint 2"}
+        assert cache.sections["sec_2"]["name"] == "Sprint 2"
+
+        cache.save()
+        cache.close()
+
+        # Re-open and verify persistence
+        reloaded = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+        assert len(reloaded.sections) == 2
+        assert reloaded.sections["sec_1"]["name"] == "Sprint 1"
+        assert reloaded.sections["sec_2"]["name"] == "Sprint 2"
+        reloaded.close()
+
+    def test_trace_cache_json_sections(self, tmp_path):
+        json_file = tmp_path / "cache.json"
+        cache = TraceCache(cache_file=str(json_file), enabled=True)
+        cache.sections = {"sec_json": {"id": "sec_json", "name": "JSON Section"}}
+        cache.save()
+
+        reloaded = TraceCache(cache_file=str(json_file), enabled=True)
+        assert reloaded.sections["sec_json"]["name"] == "JSON Section"
+
+    def test_auto_migration_with_sections(self, tmp_path, monkeypatch):
+        json_file = tmp_path / "legacy_cache.json"
+        db_file = tmp_path / "migrated.db"
+
+        legacy_data = {
+            "projects": [{"id": "p1", "name": "Work"}],
+            "tasks": {"t1": {"content": "Task 1", "parent_id": None}},
+            "sections": {"s1": {"id": "s1", "project_id": "p1", "name": "Sprint Alpha"}},
+            "events": {
+                "e1": {"id": "e1", "event_date": "2026-09-01T12:00:00Z", "extra_data": {"content": "Task 1"}}
+            },
+        }
+        with open(json_file, "w", encoding="utf-8") as f:
+            json.dump(legacy_data, f)
+
+        import todoist_trace
+        monkeypatch.setattr(todoist_trace, "DEFAULT_JSON_CACHE_PATH", json_file)
+
+        cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+        assert cache.sections["s1"]["name"] == "Sprint Alpha"
+        assert cache.tasks["t1"]["content"] == "Task 1"
+        assert len(cache.projects) == 1
+        assert cache.get_events_count() == 1
+        cache.close()
+
+
 
