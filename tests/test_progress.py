@@ -134,7 +134,7 @@ class TestFancyProgressReporter:
 
         output = buf.getvalue()
         assert "Syncing activities: 2026-01-01 → 2026-10-01" in output
-        assert "tasks fetched" in output
+        assert "activities synced" in output
 
         # Finish sync
         reporter.finish_sync(600, 1200, elapsed_sec=2.5)
@@ -185,14 +185,20 @@ class TestFancyProgressReporter:
         # Mock isatty to return True
         buf.isatty = lambda: True
 
-        reporter = FancyProgressReporter(quiet=False, no_color=True, stream=buf)
-        assert reporter.is_tty is True
+        with patch.dict(os.environ, {}, clear=True):
+            reporter = FancyProgressReporter(quiet=False, no_color=True, stream=buf)
+            assert reporter.is_tty is True
 
-        reporter.start_sync("2026-01-01T00:00:00Z", "2026-10-01T23:59:59Z")
-        reporter.update_sync(250, "2026-06-01T00:00:00Z")
+            reporter.start_sync("2026-01-01T00:00:00Z", "2026-10-01T23:59:59Z")
+            reporter.update_sync(250, "2026-06-01T00:00:00Z")
 
-        output = buf.getvalue()
-        assert "\r\033[K" in output
+            output = buf.getvalue()
+            assert "\r\033[K" in output
+
+        # Antigravity disables in-place overwriting to avoid garbled transcripts
+        with patch.dict(os.environ, {"ANTIGRAVITY_AGENT": "1"}, clear=True):
+            ag_reporter = FancyProgressReporter(quiet=False, no_color=True, stream=buf)
+            assert ag_reporter.is_tty is False
 
 
 class TestProgressIntegration:
@@ -203,6 +209,11 @@ class TestProgressIntegration:
         settings = resolve_settings(args)
         assert settings["quiet"] is True
         assert settings["no_color"] is True
+
+    def test_cli_plain_flag(self):
+        args = parse_args(["--plain", "--token", "test_tok"])
+        settings = resolve_settings(args)
+        assert settings["plain"] is True
 
     @patch("todoist_trace.api.requests.get")
     def test_api_fetch_projects_progress_callback(self, mock_get):

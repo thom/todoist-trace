@@ -24,6 +24,23 @@ def supports_color(stream=sys.stdout, force_no_color: bool = False) -> bool:
     return True
 
 
+def is_interactive_terminal(stream=sys.stdout, force_plain: bool = False) -> bool:
+    """
+    Check if the stream is an interactive terminal that properly supports
+    in-place row redrawing with carriage returns (\r).
+    Disables in-place redrawing in Antigravity, CI, IDE logs, and non-ttys.
+    """
+    if force_plain:
+        return False
+    if os.environ.get("ANTIGRAVITY_AGENT"):
+        return False
+    if os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"):
+        return False
+    if os.environ.get("INSIDE_EMACS") or os.environ.get("TERM") in ("dumb", "unknown", ""):
+        return False
+    return hasattr(stream, "isatty") and stream.isatty()
+
+
 class Style:
     """ANSI color and formatting codes with auto-disabling fallback."""
 
@@ -109,15 +126,18 @@ class FancyProgressReporter:
         self,
         quiet: bool = False,
         no_color: bool = False,
+        plain: bool = False,
         stream=sys.stdout,
     ):
         self.quiet = quiet
+        self.plain = plain
         self.stream = stream
         self.color_enabled = supports_color(stream, force_no_color=no_color)
-        self.is_tty = hasattr(stream, "isatty") and stream.isatty() and not self.quiet
+        self.is_tty = is_interactive_terminal(stream, force_plain=plain) and not self.quiet
         self.style = Style(self.color_enabled)
         self.spinner_idx = 0
         self._last_line_len = 0
+        self._last_update_time = 0.0
 
         # Sync state
         self._sync_start_time: Optional[float] = None
@@ -126,17 +146,17 @@ class FancyProgressReporter:
         self._sync_dt_start: Optional[datetime] = None
         self._sync_total_seconds: Optional[float] = None
         self._last_milestone_events = 0
+        self._last_proj_count = 0
 
     def _get_term_cols(self) -> int:
         return shutil.get_terminal_size((80, 24)).columns
 
     def _write_live_line(self, line: str) -> None:
-        """Write an in-place updating line using carriage return in TTY mode."""
+        """Write an in-place updating line using carriage return in interactive TTY mode."""
         if self.quiet:
             return
         if self.is_tty:
             cols = self._get_term_cols()
-            # Truncate to terminal width to guarantee no wrapping
             if len(line) > cols - 1:
                 line = line[: cols - 4] + "..."
             self.stream.write(f"\r\033[K{line}")
@@ -214,23 +234,31 @@ class FancyProgressReporter:
                 f"Projects: {self.style.bold(str(count))} cached projects loaded"
             )
             self.print_text(msg)
-        else:
+        elif self.is_tty:
             self._write_live_line(
                 f"{self.style.cyan('[1/4]')} {self.style.yellow(self.SPINNER_FRAMES[0])} "
                 "Connecting to Todoist API..."
             )
+        else:
+            self.print_text(f"{self.style.cyan('[1/4]')} Connecting to Todoist API...")
 
     def update_projects(self, active_count: int, archived_count: int = 0) -> None:
         if self.quiet:
             return
-        self.spinner_idx = (self.spinner_idx + 1) % len(self.SPINNER_FRAMES)
-        sp = self.style.yellow(self.SPINNER_FRAMES[self.spinner_idx])
-        line = (
-            f"{self.style.cyan('[1/4]')} {sp} Fetching projects... "
-            f"{self.style.bold(str(active_count))} active"
-            + (f", {self.style.bold(str(archived_count))} archived" if archived_count > 0 else "")
-        )
-        self._write_live_line(line)
+        if self.is_tty:
+            self.spinner_idx = (self.spinner_idx + 1) % len(self.SPINNER_FRAMES)
+            sp = self.style.yellow(self.SPINNER_FRAMES[self.spinner_idx])
+            line = (
+                f"{self.style.cyan('[1/4]')} {sp} Fetching projects... "
+                f"{self.style.bold(str(active_count))} active"
+                + (f", {self.style.bold(str(archived_count))} archived" if archived_count > 0 else "")
+            )
+            self._write_live_line(line)
+        else:
+            total = active_count + archived_count
+            if total - self._last_proj_count >= 100:
+                self._last_proj_count = total
+                self.print_text(f"  → Fetched {active_count} active projects...")
 
     def finish_projects(self, active_count: int, archived_count: int) -> None:
         if self.quiet:
@@ -333,12 +361,11 @@ class FancyProgressReporter:
             line = f"      {sp} {bar_str}{self.style.bold(pct_text)} • {info_suffix}"
             self._write_live_line(line)
         else:
-            # Non-TTY / Piped milestone log
-            if events_count - self._last_milestone_events >= 500 or (pct and pct >= 100.0):
-                self._last_milestone_events = events_count
-                pct_display = f"{pct:.1f}% • " if pct is not None else ""
-                day_display = f"{days_str} • " if days_str else ""
-                self.print_text(f"  → {pct_display}{day_display}{events_count:,} tasks fetched ({speed_str})...")
+            # Clean milestone line per batch/page in non-interactive/Antigravity
+            pct_display = f"{pct:.1f}% • " if pct is not None else ""
+            day_display = f"{days_str} • " if days_str else ""
+            eta_display = f" • {eta_str}" if eta_str else ""
+            self.print_text(f"  → {events_count:,} activities synced ({pct_display}{day_display}{speed_str}{eta_display})")
 
     def finish_sync(
         self,
@@ -394,6 +421,10 @@ class FancyProgressReporter:
         sp = self.style.yellow(self.SPINNER_FRAMES[self.spinner_idx])
 
         if self.is_tty:
+            now = time.time()
+            if now - self._last_update_time < 0.08 and current != total:
+                return
+            self._last_update_time = now
             cols = self._get_term_cols()
             pct_text = f"{pct:5.1f}%"
             counts_text = f"{current:,} / {total:,}"
@@ -402,7 +433,7 @@ class FancyProgressReporter:
             line = f"      {sp} {bar_str}{self.style.bold(pct_text)} ({counts_text})"
             self._write_live_line(line)
         else:
-            if current - self._resolve_last_milestone >= 1000 or current == total:
+            if current - self._resolve_last_milestone >= 1000:
                 self._resolve_last_milestone = current
                 self.print_text(f"  → Resolving hierarchies: {current:,} / {total:,} ({pct:.1f}%)...")
 

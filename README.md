@@ -214,6 +214,7 @@ python3 todoist_trace.py --no-cache -f markdown -o trace_live.md
 | `--refresh` | | `False` | Force re-fetching all data from the API and refresh cache. |
 | `--quiet` | `-q` | `False` | Suppress progress updates and non-error messages. |
 | `--no-color` | | `False` | Disable ANSI colors in terminal output. |
+| `--plain` | | `False` | Use clean plain-text progress updates (no in-place cursor overwrites). |
 
 ---
 

@@ -41,6 +41,7 @@ def main(argv: Optional[list] = None) -> int:
     reporter = FancyProgressReporter(
         quiet=settings.get("quiet", False),
         no_color=settings.get("no_color", False),
+        plain=settings.get("plain", False),
     )
 
     # Render sleek terminal banner

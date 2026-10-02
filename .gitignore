@@ -18,7 +18,7 @@ config.json
 # Export files and samples
 *.csv
 todoist_trace_export.*
-live_sample.*
+live_*
 sample_*
 
 # Python artifacts

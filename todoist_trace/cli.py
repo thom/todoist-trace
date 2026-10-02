@@ -106,6 +106,12 @@ def parse_args(argv: Optional[list] = None) -> argparse.Namespace:
         default=False,
         help="Disable ANSI colors in terminal output",
     )
+    parser.add_argument(
+        "--plain",
+        action="store_true",
+        default=False,
+        help="Use clean plain-text progress updates (no in-place cursor overwrites)",
+    )
     return parser.parse_args(argv)
 
 
@@ -167,6 +173,7 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
     # 9. Terminal output & progress
     quiet = bool(args.quiet or os.environ.get("TODOIST_TRACE_QUIET") or file_cfg.get("quiet", False))
     no_color = bool(args.no_color or os.environ.get("NO_COLOR") or file_cfg.get("no_color", False))
+    plain = bool(args.plain or os.environ.get("TODOIST_TRACE_PLAIN") or file_cfg.get("plain", False))
 
     return {
         "token": token,
@@ -184,4 +191,5 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         "tz": tz,
         "quiet": quiet,
         "no_color": no_color,
+        "plain": plain,
     }
