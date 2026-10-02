@@ -1,0 +1,35 @@
+# Todoist API token and config files (NEVER commit secrets!)
+.env
+*.env
+config.json
+*config.json
+*.cfg
+*.ini
+.todoist*
+
+# Export files and samples
+*.csv
+todoist_trace_export.*
+live_sample.*
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE / Editor / OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
