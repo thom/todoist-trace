@@ -17,7 +17,11 @@ from todoist_trace import (
     TaskHierarchyResolver,
     TraceCache,
     build_trace_records,
+    export_csv,
+    export_markdown,
     filter_records,
+    generate_csv,
+    generate_markdown,
     parse_args,
     resolve_settings,
 )
@@ -379,4 +383,125 @@ class TestCLIAndSettings:
         cache.projects = [{"id": "p1"}]
         cache.save()
         assert nested_cache_file.is_file()
+
+
+# ==============================================================================
+# 6. Exporter Tests (CSV & Markdown)
+# ==============================================================================
+
+class TestExporters:
+    """Test suite for CSV and Markdown exporters."""
+
+    @pytest.fixture
+    def sample_records(self):
+        return [
+            {
+                "top_level_project": "work-areas",
+                "project_path": "admin/email",
+                "project_levels": ["admin", "email"],
+                "date": "2026-09-15",
+                "time": "14:20:00",
+                "task_path": "Check inbox filters / triage / urgent",
+                "parent_task_id": "p_task_1",
+                "project_id": "proj_123",
+                "event_id": "ev_001",
+            },
+            {
+                "top_level_project": "work-areas",
+                "project_path": "admin/email",
+                "project_levels": ["admin", "email"],
+                "date": "2026-09-15",
+                "time": "14:25:00",
+                "task_path": "Reply to vendor requests",
+                "parent_task_id": "",
+                "project_id": "proj_123",
+                "event_id": "ev_002",
+            },
+            {
+                "top_level_project": "personal",
+                "project_path": "",
+                "project_levels": [],
+                "date": "2026-09-15",
+                "time": "18:00:00",
+                "task_path": 'Buy "groceries", apples & milk',
+                "parent_task_id": "",
+                "project_id": "proj_personal",
+                "event_id": "ev_003",
+            },
+        ]
+
+    def test_generate_csv(self, sample_records):
+        csv_out = generate_csv(sample_records)
+        lines = csv_out.strip().split("\n")
+
+        # Verify header
+        expected_header = "top_level_project,project_path,date,time,task_path,parent_task_id,project_id,event_id"
+        assert lines[0] == expected_header
+        assert len(lines) == 4
+
+        # Verify RFC 4180 escaping on quotes & commas
+        assert '"Buy ""groceries"", apples & milk"' in lines[3]
+        assert "work-areas,admin/email,2026-09-15,14:25:00,Reply to vendor requests,,proj_123,ev_002" in lines[1] or lines[2]
+
+    def test_export_csv_file_creation(self, sample_records, tmp_path):
+        out_file = tmp_path / "subdir" / "export.csv"
+        export_csv(sample_records, str(out_file))
+
+        assert out_file.is_file()
+        content = out_file.read_text(encoding="utf-8")
+        assert "top_level_project,project_path,date" in content
+        assert "ev_001" in content
+
+    def test_generate_markdown_nested_style(self, sample_records):
+        md_out = generate_markdown(sample_records, style="nested")
+
+        # Check date heading
+        assert "## 2026-09-15" in md_out
+
+        # Check progressive headings
+        assert "### work-areas" in md_out
+        assert "#### admin" in md_out
+        assert "##### email" in md_out
+
+        # Check task bullets
+        assert "- Check inbox filters / triage / urgent" in md_out
+        assert "- Reply to vendor requests" in md_out
+
+        # Check direct task under root project
+        assert "### personal" in md_out
+        assert '- Buy "groceries", apples & milk' in md_out
+
+    def test_generate_markdown_flat_style(self, sample_records):
+        md_out = generate_markdown(sample_records, style="flat")
+
+        # Check date heading
+        assert "## 2026-09-15" in md_out
+
+        # Check flat project path heading
+        assert "### work-areas" in md_out
+        assert "#### admin/email" in md_out
+        assert "#### admin\n" not in md_out
+
+        # Check task bullets
+        assert "- Check inbox filters / triage / urgent" in md_out
+        assert "- Reply to vendor requests" in md_out
+
+        # Check root project without sub-heading
+        assert "### personal" in md_out
+        assert '- Buy "groceries", apples & milk' in md_out
+
+    def test_export_markdown_file_creation(self, sample_records, tmp_path):
+        out_file = tmp_path / "nested" / "export.md"
+        export_markdown(sample_records, str(out_file), style="nested")
+
+        assert out_file.is_file()
+        content = out_file.read_text(encoding="utf-8")
+        assert "## 2026-09-15" in content
+        assert "### work-areas" in content
+
+    def test_empty_records(self, tmp_path):
+        assert generate_markdown([]) == ""
+        csv_empty = generate_csv([])
+        assert csv_empty.strip() == "top_level_project,project_path,date,time,task_path,parent_task_id,project_id,event_id"
+
 
