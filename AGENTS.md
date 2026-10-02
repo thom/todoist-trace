@@ -1,8 +1,9 @@
 # Agent Guidelines & Repository Conventions
 
 ## Git Commit Conventions (Google Style)
-* **Imperative Subject Line**: Write the first line as a standalone command/order (e.g. `Route incoming senders...`, not `Routed` or `Routing`), under 50 characters when possible. Do not use conventional commit tags like `feat:`, `fix:`, etc.
-* **Explain the "Why"**: Use the body (separated by a blank line) to explain the motivation, context, and problem solved rather than repeating what is obvious from the code diff.
+* **Imperative Subject Line**: Write the first line as a standalone command/order (e.g. `Route incoming senders...`, not `Routed` or `Routing`), under 50 characters when possible (hard limit 72 characters). Do not use conventional commit tags like `feat:`, `fix:`, etc., and do not end the subject with a period.
+* **Line Wrapping (72 Columns)**: Hard wrap all body lines at 72 characters (never exceed 80 characters). When passing commit messages via shell commands, include explicit newline breaks (`\n`) so lines are never stored as single continuous unwrapped paragraphs.
+* **Explain the "Why"**: Use the body (separated from the subject by a blank line) to explain the motivation, context, and problem solved rather than repeating what is obvious from the code diff.
 * **Brevity & Proportionality**: Keep descriptions concise and proportionate to the change—typically 1 to 2 focused sentences in the body. Avoid laundry lists or novels.
 * **No Task Numbers**: Do not reference roadmap task numbers (e.g. `Task 27`) in commit messages; focus on architectural and functional descriptions.
 
