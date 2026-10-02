@@ -247,6 +247,69 @@ def fetch_projects(token: str) -> List[Dict[str, Any]]:
     return all_projects
 
 
+class ProjectTreeResolver:
+    """Resolves project hierarchies into root ancestor and relative sub-project path."""
+
+    def __init__(self, projects: List[Dict[str, Any]]):
+        self.projects_by_id: Dict[str, Dict[str, Any]] = {
+            str(p["id"]): p for p in projects if "id" in p
+        }
+        self.cache: Dict[str, Dict[str, Any]] = {}
+
+    def resolve(self, project_id: Optional[Any]) -> Dict[str, Any]:
+        """
+        Recursively resolve project hierarchy.
+        Returns:
+            {
+                "top_level_project": str,
+                "project_path": str,
+                "project_levels": List[str],
+            }
+        """
+        if not project_id:
+            return {
+                "top_level_project": "Unknown",
+                "project_path": "",
+                "project_levels": [],
+            }
+
+        pid_str = str(project_id)
+        if pid_str in self.cache:
+            return self.cache[pid_str]
+
+        chain: List[str] = []
+        curr: Optional[str] = pid_str
+        visited: set = set()
+
+        while curr and curr in self.projects_by_id and curr not in visited:
+            visited.add(curr)
+            proj = self.projects_by_id[curr]
+            chain.append(proj.get("name", "Unnamed"))
+            parent = proj.get("parent_id")
+            curr = str(parent) if parent else None
+
+        chain.reverse()
+
+        if not chain:
+            res = {
+                "top_level_project": "Unknown",
+                "project_path": "",
+                "project_levels": [],
+            }
+        else:
+            top_level = chain[0]
+            levels = chain[1:]
+            path = "/".join(levels)
+            res = {
+                "top_level_project": top_level,
+                "project_path": path,
+                "project_levels": levels,
+            }
+
+        self.cache[pid_str] = res
+        return res
+
+
 def main(argv: Optional[list] = None) -> int:
     """Main CLI entrypoint."""
     args = parse_args(argv)
@@ -274,9 +337,16 @@ def main(argv: Optional[list] = None) -> int:
     archived = [p for p in projects if p.get("is_archived", False)]
     print(f"Successfully authenticated! Retrieved {len(projects)} projects ({len(active)} active, {len(archived)} archived).")
 
-    sample_names = [p.get("name", "Unnamed") for p in active[:5]]
-    if sample_names:
-        print(f"Sample projects: {', '.join(sample_names)}")
+    resolver = ProjectTreeResolver(projects)
+    sub_projects = [p for p in projects if resolver.resolve(p.get("id"))["project_path"]]
+    print(f"Project tree resolved: {len(projects) - len(sub_projects)} root projects, {len(sub_projects)} sub-projects.")
+
+    # Show a few sample resolved hierarchies
+    sample_sub = sub_projects[:3]
+    for sp in sample_sub:
+        res = resolver.resolve(sp.get("id"))
+        print(f"  • {res['top_level_project']} / {res['project_path']}")
+
     return 0
 
 
