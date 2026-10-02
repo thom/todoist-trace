@@ -1,0 +1,48 @@
+"""
+Unit tests for CLI argument parsing and configuration resolution.
+"""
+
+from todoist_trace.cache import TraceCache
+from todoist_trace.cli import parse_args, resolve_settings
+
+
+class TestCLIAndSettings:
+    """Test CLI parsing and configuration precedence."""
+
+    def test_cli_flags_override_defaults(self):
+        args = parse_args([
+            "-f", "markdown",
+            "-c", "work",
+            "-s", "2026-09-01",
+            "-e", "2026-09-30",
+            "-o", "custom.md",
+            "-t", "test_token_123",
+            "--markdown-style", "flat",
+        ])
+        settings = resolve_settings(args)
+
+        assert settings["format"] == "markdown"
+        assert settings["category"] == "work"
+        assert settings["start_date"] == "2026-09-01"
+        assert settings["end_date"] == "2026-09-30"
+        assert settings["output"] == "custom.md"
+        assert settings["token"] == "test_token_123"
+        assert settings["markdown_style"] == "flat"
+
+    def test_md_alias_normalizes_to_markdown(self):
+        args = parse_args(["-f", "md"])
+        settings = resolve_settings(args)
+        assert settings["format"] == "markdown"
+        assert settings["output"] == "todoist_trace_export.md"
+
+    def test_default_cache_path_in_dotdir(self):
+        args = parse_args([])
+        settings = resolve_settings(args)
+        assert ".todoist-trace/cache.db" in settings["cache_file"]
+
+    def test_cache_save_creates_parent_directory(self, tmp_path):
+        nested_cache_file = tmp_path / "new_dir" / "sub" / "cache.json"
+        cache = TraceCache(cache_file=str(nested_cache_file), enabled=True)
+        cache.projects = [{"id": "p1"}]
+        cache.save()
+        assert nested_cache_file.is_file()

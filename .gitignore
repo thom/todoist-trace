@@ -5,6 +5,7 @@ config.json
 *config.json
 *.cfg
 *.ini
+!pytest.ini
 .todoist*
 
 # Local cache files (task and project cache)
