@@ -11,6 +11,8 @@ config.json
 *cache.json
 *.cache
 .cache/
+*.db
+*.sqlite
 
 # Export files and samples
 *.csv
