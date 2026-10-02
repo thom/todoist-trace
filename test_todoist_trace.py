@@ -575,4 +575,54 @@ class TestExporters:
         csv_empty = generate_csv([])
         assert csv_empty.strip() == "top_level_project,project_path,date,time,task_path,parent_task_id,project_id,event_id"
 
+    def test_generate_markdown_task_bullet_hierarchy(self):
+        records = [
+            {
+                "top_level_project": "work",
+                "project_path": "backend-api",
+                "project_levels": ["backend-api"],
+                "date": "2026-09-30",
+                "time": "10:00:00",
+                "task_path": "Sprint Deliverables / Services / Auth",
+                "task_levels": ["Sprint Deliverables", "Services", "Auth"],
+                "parent_task_id": "p2",
+                "project_id": "p1",
+                "event_id": "e1",
+            },
+            {
+                "top_level_project": "work",
+                "project_path": "backend-api",
+                "project_levels": ["backend-api"],
+                "date": "2026-09-30",
+                "time": "10:05:00",
+                "task_path": "Sprint Deliverables / Services / Database",
+                "task_levels": ["Sprint Deliverables", "Services", "Database"],
+                "parent_task_id": "p2",
+                "project_id": "p1",
+                "event_id": "e2",
+            },
+            {
+                "top_level_project": "work",
+                "project_path": "backend-api",
+                "project_levels": ["backend-api"],
+                "date": "2026-09-30",
+                "time": "10:10:00",
+                "task_path": "Sprint Deliverables / Client Portal",
+                "task_levels": ["Sprint Deliverables", "Client Portal"],
+                "parent_task_id": "p1",
+                "project_id": "p1",
+                "event_id": "e3",
+            },
+        ]
+        # Nested task style
+        md_nested = generate_markdown(records, style="nested", task_style="nested")
+        assert "- Sprint Deliverables\n  - Client Portal\n  - Services\n    - Database\n    - Auth" in md_nested
+
+        # Flat task style
+        md_flat = generate_markdown(records, style="nested", task_style="flat")
+        assert "- Sprint Deliverables / Services / Auth" in md_flat
+        assert "- Sprint Deliverables / Services / Database" in md_flat
+        assert "- Sprint Deliverables / Client Portal" in md_flat
+
+
 

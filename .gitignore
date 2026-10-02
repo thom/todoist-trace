@@ -18,6 +18,7 @@ config.json
 *.csv
 todoist_trace_export.*
 live_sample.*
+sample_*
 
 # Python artifacts
 __pycache__/

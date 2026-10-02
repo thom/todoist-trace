@@ -88,6 +88,8 @@ def load_config(custom_path: Optional[str] = None) -> Dict[str, Any]:
                             config["output"] = env_data["TODOIST_TRACE_OUTPUT"]
                         if "TODOIST_TRACE_MARKDOWN_STYLE" in env_data:
                             config["markdown_style"] = env_data["TODOIST_TRACE_MARKDOWN_STYLE"]
+                        if "TODOIST_TRACE_TASK_STYLE" in env_data:
+                            config["task_style"] = env_data["TODOIST_TRACE_TASK_STYLE"]
                         if "TODOIST_TRACE_START_DATE" in env_data:
                             config["start_date"] = env_data["TODOIST_TRACE_START_DATE"]
                         if "TODOIST_TRACE_END_DATE" in env_data:
@@ -149,6 +151,12 @@ def parse_args(argv: Optional[list] = None) -> argparse.Namespace:
         help="Markdown project heading style: nested (#### admin / ##### email) or flat (#### admin/email) (default: nested)",
     )
     parser.add_argument(
+        "--task-style",
+        choices=["nested", "flat"],
+        default=None,
+        help="Markdown task bullet style: nested (bullet hierarchy) or flat (slash-separated) (default: nested)",
+    )
+    parser.add_argument(
         "--config",
         type=str,
         default=None,
@@ -199,6 +207,9 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
     # 4. Markdown Style
     markdown_style = (args.markdown_style or os.environ.get("TODOIST_TRACE_MARKDOWN_STYLE") or file_cfg.get("markdown_style") or "nested").lower()
 
+    # 4b. Task Style (nested bullet hierarchy or flat slash-separated)
+    task_style = (args.task_style or os.environ.get("TODOIST_TRACE_TASK_STYLE") or file_cfg.get("task_style") or "nested").lower()
+
     # 5. Dates
     start_date = args.start_date or os.environ.get("TODOIST_TRACE_START_DATE") or file_cfg.get("start_date")
     end_date = args.end_date or os.environ.get("TODOIST_TRACE_END_DATE") or file_cfg.get("end_date")
@@ -226,6 +237,7 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         "format": output_format,
         "category": category,
         "markdown_style": markdown_style,
+        "task_style": task_style,
         "start_date": start_date,
         "end_date": end_date,
         "output": output,
@@ -951,10 +963,48 @@ def export_csv(records: List[Dict[str, Any]], output_path: str) -> None:
         f.write(content)
 
 
-def generate_markdown(records: List[Dict[str, Any]], style: str = "nested") -> str:
+def format_task_bullets(records_in_group: List[Dict[str, Any]], task_style: str = "nested") -> List[str]:
+    """Format tasks either as nested bullet hierarchy or flat slash paths."""
+    if task_style == "flat":
+        return [f"- {r.get('task_path', '')}" for r in records_in_group]
+
+    class TaskNode:
+        def __init__(self, title: str):
+            self.title = title
+            self.children: Dict[str, "TaskNode"] = {}
+
+    root_tasks: Dict[str, TaskNode] = {}
+    for r in records_in_group:
+        levels = r.get("task_levels")
+        if not levels:
+            levels = [r.get("task_path", "")]
+        curr = root_tasks
+        for lvl in levels:
+            if lvl not in curr:
+                curr[lvl] = TaskNode(lvl)
+            curr = curr[lvl].children
+
+    def render_tree(nodes: Dict[str, TaskNode], depth: int = 0) -> List[str]:
+        res = []
+        indent = "  " * depth
+        for node in nodes.values():
+            res.append(f"{indent}- {node.title}")
+            if node.children:
+                res.extend(render_tree(node.children, depth + 1))
+        return res
+
+    return render_tree(root_tasks)
+
+
+def generate_markdown(
+    records: List[Dict[str, Any]],
+    style: str = "nested",
+    task_style: str = "nested",
+) -> str:
     """
     Format trace records into Markdown grouped by date and project hierarchy.
     style: 'nested' (progressive headings) or 'flat' (slash-separated heading)
+    task_style: 'nested' (bullet hierarchy) or 'flat' (slash-separated tasks)
     """
     if not records:
         return ""
@@ -988,28 +1038,26 @@ def generate_markdown(records: List[Dict[str, Any]], style: str = "nested") -> s
 
             if style == "flat":
                 # Group by project_path
-                paths_map: Dict[str, List[str]] = {}
+                paths_map: Dict[str, List[Dict[str, Any]]] = {}
                 for pr in proj_records:
                     p_path = pr.get("project_path") or ""
                     if p_path not in paths_map:
                         paths_map[p_path] = []
-                    paths_map[p_path].append(pr.get("task_path", ""))
+                    paths_map[p_path].append(pr)
 
                 # 1. Direct tasks under top_level_project (empty project_path)
                 if "" in paths_map:
-                    for t in paths_map[""]:
-                        lines.append(f"- {t}")
+                    lines.extend(format_task_bullets(paths_map[""], task_style=task_style))
                     lines.append("")
 
                 # 2. Sub-projects
-                for p_path, tasks in paths_map.items():
+                for p_path, recs in paths_map.items():
                     if p_path == "":
                         continue
                     if "" not in paths_map and len(lines) > 0 and lines[-1] == f"### {top_proj}":
                         lines.append("")
                     lines.append(f"#### {p_path}")
-                    for t in tasks:
-                        lines.append(f"- {t}")
+                    lines.extend(format_task_bullets(recs, task_style=task_style))
                     lines.append("")
 
             else:  # nested style
@@ -1017,7 +1065,7 @@ def generate_markdown(records: List[Dict[str, Any]], style: str = "nested") -> s
                     def __init__(self, name: str = "", depth: int = 0):
                         self.name = name
                         self.depth = depth
-                        self.tasks: List[str] = []
+                        self.records: List[Dict[str, Any]] = []
                         self.children: Dict[str, "Node"] = {}
 
                 root_node = Node(name=top_proj, depth=0)
@@ -1028,10 +1076,10 @@ def generate_markdown(records: List[Dict[str, Any]], style: str = "nested") -> s
                         if level_name not in curr.children:
                             curr.children[level_name] = Node(name=level_name, depth=idx + 1)
                         curr = curr.children[level_name]
-                    curr.tasks.append(pr.get("task_path", ""))
+                    curr.records.append(pr)
 
                 def render_nested_node(node: Node) -> None:
-                    if node.depth == 0 and not node.tasks and node.children:
+                    if node.depth == 0 and not node.records and node.children:
                         lines.append("")
 
                     if node.depth > 0:
@@ -1039,9 +1087,8 @@ def generate_markdown(records: List[Dict[str, Any]], style: str = "nested") -> s
                         hashes = "#" * h_level
                         lines.append(f"{hashes} {node.name}")
 
-                    if node.tasks:
-                        for t in node.tasks:
-                            lines.append(f"- {t}")
+                    if node.records:
+                        lines.extend(format_task_bullets(node.records, task_style=task_style))
                         lines.append("")
                     elif node.depth > 0 and node.children:
                         lines.append("")
@@ -1058,11 +1105,12 @@ def export_markdown(
     records: List[Dict[str, Any]],
     output_path: str,
     style: str = "nested",
+    task_style: str = "nested",
 ) -> None:
     """Export trace records to a Markdown file."""
     path = Path(output_path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
-    content = generate_markdown(records, style=style)
+    content = generate_markdown(records, style=style, task_style=task_style)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
 
@@ -1167,7 +1215,12 @@ def main(argv: Optional[list] = None) -> int:
     if out_fmt == "csv":
         export_csv(filtered_records, out_path)
     else:
-        export_markdown(filtered_records, out_path, style=settings["markdown_style"])
+        export_markdown(
+            filtered_records,
+            out_path,
+            style=settings["markdown_style"],
+            task_style=settings["task_style"],
+        )
 
     print(f"\nSuccessfully exported {len(filtered_records)} records to {out_path} ({out_fmt.upper()} format).")
 
