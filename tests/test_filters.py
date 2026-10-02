@@ -50,3 +50,30 @@ class TestFiltering:
         )
         assert len(filtered) == 1
         assert filtered[0]["task_path"] == "Task 2"
+
+    def test_reversed_dates_returns_empty(self, sample_filter_records):
+        filtered = filter_records(
+            sample_filter_records,
+            category="all",
+            start_date="2026-10-10",
+            end_date="2026-10-01",
+        )
+        assert filtered == []
+
+    def test_future_start_date_returns_empty(self, sample_filter_records):
+        filtered = filter_records(
+            sample_filter_records,
+            category="all",
+            start_date="2099-01-01",
+        )
+        assert filtered == []
+
+    def test_start_equals_end_date_exact_day(self, sample_filter_records):
+        filtered = filter_records(
+            sample_filter_records,
+            category="all",
+            start_date="2026-10-01",
+            end_date="2026-10-01",
+        )
+        assert len(filtered) == 2
+        assert {r["task_path"] for r in filtered} == {"Task 1", "Task 3"}

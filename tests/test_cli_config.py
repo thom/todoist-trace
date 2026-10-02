@@ -46,3 +46,15 @@ class TestCLIAndSettings:
         cache.projects = [{"id": "p1"}]
         cache.save()
         assert nested_cache_file.is_file()
+
+    def test_reversed_dates_raise_value_error(self):
+        import pytest
+        args = parse_args(["-s", "2026-10-10", "-e", "2026-10-01"])
+        with pytest.raises(ValueError, match="cannot be after end date"):
+            resolve_settings(args)
+
+    def test_same_start_and_end_date_valid(self):
+        args = parse_args(["-s", "2026-10-01", "-e", "2026-10-01"])
+        settings = resolve_settings(args)
+        assert settings["start_date"] == "2026-10-01"
+        assert settings["end_date"] == "2026-10-01"

@@ -121,6 +121,8 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
     # 5. Dates
     start_date = args.start_date or os.environ.get("TODOIST_TRACE_START_DATE") or file_cfg.get("start_date")
     end_date = args.end_date or os.environ.get("TODOIST_TRACE_END_DATE") or file_cfg.get("end_date")
+    if start_date and end_date and start_date > end_date:
+        raise ValueError(f"Start date ({start_date}) cannot be after end date ({end_date}).")
 
     # 6. Output path
     output = args.output or os.environ.get("TODOIST_TRACE_OUTPUT") or file_cfg.get("output")

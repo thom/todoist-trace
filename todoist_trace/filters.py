@@ -18,6 +18,9 @@ def filter_records(
     - start_date: 'YYYY-MM-DD' (inclusive)
     - end_date: 'YYYY-MM-DD' (inclusive)
     """
+    if start_date and end_date and start_date > end_date:
+        return []
+
     filtered = []
     cat_lower = (category or "all").lower()
 
