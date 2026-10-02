@@ -9,7 +9,9 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+import requests
 
 
 def load_env_file(path: Path) -> Dict[str, str]:
@@ -187,6 +189,64 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
     }
 
 
+def fetch_projects(token: str) -> List[Dict[str, Any]]:
+    """
+    Fetch active and archived projects from the Todoist API.
+    Handles cursor pagination across active and archived endpoints.
+    """
+    headers = {
+        "Authorization": f"Bearer {token}",
+    }
+    all_projects: List[Dict[str, Any]] = []
+
+    # 1. Fetch active projects (paginated)
+    url = "https://api.todoist.com/api/v1/projects"
+    cursor = None
+    while True:
+        params = {"cursor": cursor} if cursor else {}
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=15)
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Network error communicating with Todoist API: {e}") from e
+
+        if resp.status_code == 401:
+            raise ValueError("Invalid Todoist API token. Please check your credentials.")
+        if resp.status_code != 200:
+            raise RuntimeError(f"Todoist API returned HTTP {resp.status_code}: {resp.text}")
+
+        data = resp.json()
+        results = data.get("results", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+        all_projects.extend(results)
+
+        cursor = data.get("next_cursor") if isinstance(data, dict) else None
+        if not cursor:
+            break
+
+    # 2. Fetch archived projects
+    archived_url = "https://api.todoist.com/api/v1/projects/archived"
+    cursor = None
+    while True:
+        params = {"cursor": cursor} if cursor else {}
+        try:
+            resp = requests.get(archived_url, headers=headers, params=params, timeout=15)
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Network error fetching archived projects: {e}") from e
+
+        if resp.status_code == 200:
+            data = resp.json()
+            results = data.get("results", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+            for p in results:
+                p["is_archived"] = True
+            all_projects.extend(results)
+            cursor = data.get("next_cursor") if isinstance(data, dict) else None
+            if not cursor:
+                break
+        else:
+            break
+
+    return all_projects
+
+
 def main(argv: Optional[list] = None) -> int:
     """Main CLI entrypoint."""
     args = parse_args(argv)
@@ -202,18 +262,24 @@ def main(argv: Optional[list] = None) -> int:
         )
         return 1
 
-    print("Settings resolved successfully:")
-    # Mask token for security when logging
     masked_token = settings["token"][:4] + "..." + settings["token"][-4:] if len(settings["token"]) > 8 else "***"
-    print(f"  Format:         {settings['format']}")
-    print(f"  Category:       {settings['category']}")
-    print(f"  Markdown Style: {settings['markdown_style']}")
-    print(f"  Start Date:     {settings['start_date']}")
-    print(f"  End Date:       {settings['end_date']}")
-    print(f"  Output File:    {settings['output']}")
-    print(f"  Token:          {masked_token}")
+    print(f"Connecting to Todoist API (token: {masked_token})...")
+    try:
+        projects = fetch_projects(settings["token"])
+    except (ValueError, RuntimeError) as e:
+        sys.stderr.write(f"Error: {e}\n")
+        return 1
+
+    active = [p for p in projects if not p.get("is_archived", False) and not p.get("is_deleted", False)]
+    archived = [p for p in projects if p.get("is_archived", False)]
+    print(f"Successfully authenticated! Retrieved {len(projects)} projects ({len(active)} active, {len(archived)} archived).")
+
+    sample_names = [p.get("name", "Unnamed") for p in active[:5]]
+    if sample_names:
+        print(f"Sample projects: {', '.join(sample_names)}")
     return 0
 
 
 if __name__ == "__main__":
     sys.exit(main())
+
