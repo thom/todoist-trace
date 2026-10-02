@@ -1,16 +1,134 @@
 """
 Persistent caching implementations for todoist-trace.
-Includes SQLite-backed caching (default) and legacy JSON caching with auto-migration.
+Includes SQLite-backed caching (default) and legacy JSON caching with interval-aware
+range synchronization and auto-migration.
 """
 
 import json
 import sqlite3
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .config import DEFAULT_CACHE_PATH, DEFAULT_JSON_CACHE_PATH
+
+
+def normalize_start_date(dt_str: Optional[str]) -> Optional[str]:
+    """Normalize a date or timestamp string into an ISO UTC start timestamp."""
+    if not dt_str:
+        return None
+    if "T" in dt_str:
+        return dt_str
+    return f"{dt_str}T00:00:00Z"
+
+
+def normalize_end_date(dt_str: Optional[str]) -> Optional[str]:
+    """Normalize a date or timestamp string into an ISO UTC end timestamp."""
+    if not dt_str:
+        return None
+    if "T" in dt_str:
+        return dt_str
+    return f"{dt_str}T23:59:59Z"
+
+
+def _is_contiguous_or_overlapping(end_str: str, start_str: str, tolerance_seconds: int = 1) -> bool:
+    """Return True if start_str <= end_str or contiguous within tolerance_seconds (e.g. across midnight)."""
+    if start_str <= end_str:
+        return True
+    try:
+        t_end = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+        t_start = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+        return (t_start - t_end) <= timedelta(seconds=tolerance_seconds)
+    except Exception:
+        return False
+
+
+def coalesce_intervals(
+    intervals: List[Tuple[str, str, bool]]
+) -> List[Tuple[str, str, bool]]:
+    """
+    Coalesce a list of (start_time, end_time, is_genesis) intervals
+    into a minimal sorted list of disjoint intervals.
+    """
+    if not intervals:
+        return []
+
+    # Sort primarily by start_time
+    sorted_intervals = sorted(intervals, key=lambda x: (x[0], x[1]))
+    coalesced: List[Tuple[str, str, bool]] = []
+
+    for s, e, g in sorted_intervals:
+        if not coalesced:
+            coalesced.append((s, e, g))
+            continue
+
+        prev_s, prev_e, prev_g = coalesced[-1]
+        # Overlapping or directly contiguous (e.g. 23:59:59 to 00:00:00 across midnight)
+        if _is_contiguous_or_overlapping(prev_e, s):
+            new_e = max(prev_e, e)
+            new_g = prev_g or g
+            coalesced[-1] = (prev_s, new_e, new_g)
+        else:
+            coalesced.append((s, e, g))
+
+    return coalesced
+
+
+def calculate_missing_intervals(
+    existing: List[Tuple[str, str, bool]],
+    req_start: Optional[str],
+    req_end: Optional[str],
+) -> List[Tuple[Optional[str], Optional[str]]]:
+    """
+    Given existing synced intervals and a requested range [req_start, req_end],
+    compute the minimal sub-intervals that need to be fetched from the API.
+    Returns [] if the requested range is 100% cached or inverted.
+    """
+    norm_start = normalize_start_date(req_start)
+    norm_end = normalize_end_date(req_end) or datetime.now(timezone.utc).isoformat()
+
+    # Guard against inverted date ranges (start > end)
+    if norm_start and norm_end and norm_start > norm_end:
+        return []
+
+    is_genesis_req = (req_start is None)
+
+    coalesced = coalesce_intervals(existing)
+    if not coalesced:
+        return [(norm_start, norm_end)]
+
+    missing: List[Tuple[Optional[str], Optional[str]]] = []
+
+    # 1. Handle genesis / unbounded past request
+    if is_genesis_req:
+        genesis_interval = next((iv for iv in coalesced if iv[2]), None)
+        if genesis_interval:
+            current_ptr = genesis_interval[1]
+        else:
+            earliest_known = min(coalesced[0][0], norm_end)
+            missing.append((None, earliest_known))
+            current_ptr = coalesced[0][1]
+    else:
+        current_ptr = norm_start
+
+    # 2. Iterate through coalesced intervals to find intermediate gaps
+    for s, e, _ in coalesced:
+        if _is_contiguous_or_overlapping(current_ptr, s) or s <= current_ptr:
+            current_ptr = max(current_ptr, e)
+            continue
+        if s > norm_end:
+            break
+        if s > current_ptr:
+            gap_end = min(s, norm_end)
+            missing.append((current_ptr, gap_end))
+            current_ptr = max(current_ptr, e)
+
+    # 3. Handle remaining forward gap up to norm_end
+    if current_ptr < norm_end and not _is_contiguous_or_overlapping(current_ptr, norm_end):
+        missing.append((current_ptr, norm_end))
+
+    return missing
 
 
 class TraceCache:
@@ -23,6 +141,7 @@ class TraceCache:
         self.projects: List[Dict[str, Any]] = []
         self.tasks: Dict[str, Dict[str, Any]] = {}
         self.events: Dict[str, Dict[str, Any]] = {}
+        self.sync_ranges: List[Dict[str, Any]] = []
         self.last_sync: Optional[str] = None
         if self.enabled:
             self.load()
@@ -36,6 +155,7 @@ class TraceCache:
                 self.projects = data.get("projects", [])
                 self.tasks = data.get("tasks", {})
                 self.events = data.get("events", {})
+                self.sync_ranges = data.get("sync_ranges", [])
                 self.last_sync = data.get("last_sync")
         except Exception as e:
             sys.stderr.write(f"Warning: Failed to load cache from {self.path}: {e}\n")
@@ -51,6 +171,7 @@ class TraceCache:
                 "projects": self.projects,
                 "tasks": self.tasks,
                 "events": self.events,
+                "sync_ranges": self.sync_ranges,
             }
             with open(temp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
@@ -83,6 +204,41 @@ class TraceCache:
     def get_events_count(self) -> int:
         return len(self.events)
 
+    def get_sync_ranges(self) -> List[Tuple[str, str, bool]]:
+        return [
+            (r["start_time"], r["end_time"], bool(r.get("is_genesis", False)))
+            for r in self.sync_ranges
+            if "start_time" in r and "end_time" in r
+        ]
+
+    def record_sync_range(self, start_time: str, end_time: str, is_genesis: bool = False) -> None:
+        current = self.get_sync_ranges()
+        current.append((start_time, end_time, is_genesis))
+        coalesced = coalesce_intervals(current)
+        self.sync_ranges = [
+            {"start_time": s, "end_time": e, "is_genesis": g}
+            for s, e, g in coalesced
+        ]
+
+    def get_missing_ranges(self, req_start: Optional[str], req_end: Optional[str]) -> List[Tuple[Optional[str], Optional[str]]]:
+        return calculate_missing_intervals(self.get_sync_ranges(), req_start, req_end)
+
+    def is_range_cached(self, req_start: Optional[str], req_end: Optional[str]) -> bool:
+        return len(self.get_missing_ranges(req_start, req_end)) == 0
+
+    def get_events_in_range(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+        norm_start = normalize_start_date(start_date)
+        norm_end = normalize_end_date(end_date)
+        filtered = []
+        for ev in self.events.values():
+            ev_date = str(ev.get("event_date", ""))
+            if norm_start and ev_date < norm_start:
+                continue
+            if norm_end and ev_date > norm_end:
+                continue
+            filtered.append(ev)
+        return sorted(filtered, key=lambda x: str(x.get("event_date", "")), reverse=True)
+
 
 class TaskCacheDict(dict):
     """Dictionary that auto-persists inserted tasks to SQLite."""
@@ -110,7 +266,7 @@ class TaskCacheDict(dict):
 
 
 class SQLiteTraceCache:
-    """SQLite-backed persistent cache for projects, tasks, and activity events."""
+    """SQLite-backed persistent cache with range-aware synchronization."""
 
     def __init__(self, cache_file: Optional[str] = None, enabled: bool = True):
         self.enabled = enabled
@@ -122,6 +278,7 @@ class SQLiteTraceCache:
         if self.enabled:
             self._init_db()
             self._auto_migrate_if_needed()
+            self._init_sync_ranges_if_needed()
             self._load_metadata()
 
     def _init_db(self) -> None:
@@ -159,11 +316,36 @@ class SQLiteTraceCache:
             """)
             self.conn.execute("CREATE INDEX IF NOT EXISTS idx_events_date ON events(event_date)")
             self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS sync_ranges (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    start_time TEXT NOT NULL,
+                    end_time TEXT NOT NULL,
+                    is_genesis INTEGER DEFAULT 0
+                )
+            """)
+            self.conn.execute("""
                 CREATE TABLE IF NOT EXISTS meta (
                     key TEXT PRIMARY KEY,
                     value TEXT
                 )
             """)
+
+    def _init_sync_ranges_if_needed(self) -> None:
+        """Initialize sync_ranges from existing events for upgraded databases."""
+        if not self.conn:
+            return
+        cur = self.conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM sync_ranges")
+        if cur.fetchone()[0] > 0:
+            return
+        cur.execute("SELECT MIN(event_date), MAX(event_date) FROM events WHERE event_date IS NOT NULL AND event_date != ''")
+        row = cur.fetchone()
+        if row and row[0] and row[1]:
+            with self.conn:
+                self.conn.execute(
+                    "INSERT INTO sync_ranges (start_time, end_time, is_genesis) VALUES (?, ?, 0)",
+                    (row[0], row[1]),
+                )
 
     def _auto_migrate_if_needed(self) -> None:
         """Auto-migrate legacy JSON cache into SQLite if SQLite events table is empty."""
@@ -173,9 +355,8 @@ class SQLiteTraceCache:
         cur.execute("SELECT COUNT(*) FROM events")
         count = cur.fetchone()[0]
         if count > 0:
-            return  # Already populated
+            return
 
-        # Check for candidate JSON files: ~/.todoist-trace/cache.json, then .todoist_cache.json
         import todoist_trace
         dynamic_default = getattr(todoist_trace, "DEFAULT_JSON_CACHE_PATH", DEFAULT_JSON_CACHE_PATH)
         json_candidates = [
@@ -255,6 +436,74 @@ class SQLiteTraceCache:
         row = cur.fetchone()
         return row[0] if row and row[0] else None
 
+    def get_oldest_event_date(self) -> Optional[str]:
+        if not self.enabled or not self.conn:
+            return None
+        cur = self.conn.cursor()
+        cur.execute("SELECT MIN(event_date) FROM events WHERE event_date IS NOT NULL AND event_date != ''")
+        row = cur.fetchone()
+        return row[0] if row and row[0] else None
+
+    def get_date_bounds(self) -> Tuple[Optional[str], Optional[str]]:
+        return (self.get_oldest_event_date(), self.get_latest_event_date())
+
+    def get_sync_ranges(self) -> List[Tuple[str, str, bool]]:
+        """Return all coalesced synchronized time ranges."""
+        if not self.enabled or not self.conn:
+            return []
+        cur = self.conn.cursor()
+        cur.execute("SELECT start_time, end_time, is_genesis FROM sync_ranges ORDER BY start_time ASC")
+        rows = [(r[0], r[1], bool(r[2])) for r in cur.fetchall()]
+        return coalesce_intervals(rows)
+
+    def record_sync_range(self, start_time: str, end_time: str, is_genesis: bool = False) -> None:
+        """Record a newly synchronized time range and coalesce overlapping ranges."""
+        if not self.enabled or not self.conn:
+            return
+        current = self.get_sync_ranges()
+        current.append((start_time, end_time, is_genesis))
+        coalesced = coalesce_intervals(current)
+
+        with self.conn:
+            self.conn.execute("DELETE FROM sync_ranges")
+            rows = [(s, e, 1 if g else 0) for s, e, g in coalesced]
+            self.conn.executemany(
+                "INSERT INTO sync_ranges (start_time, end_time, is_genesis) VALUES (?, ?, ?)",
+                rows,
+            )
+
+    def get_missing_ranges(self, req_start: Optional[str], req_end: Optional[str]) -> List[Tuple[Optional[str], Optional[str]]]:
+        """Compute missing range gaps that must be fetched from the API."""
+        return calculate_missing_intervals(self.get_sync_ranges(), req_start, req_end)
+
+    def is_range_cached(self, req_start: Optional[str], req_end: Optional[str]) -> bool:
+        """Check if requested range is completely covered by cache."""
+        return len(self.get_missing_ranges(req_start, req_end)) == 0
+
+    def get_events_in_range(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Retrieve events matching date range directly from SQLite using idx_events_date."""
+        if not self.enabled or not self.conn:
+            return []
+        norm_start = normalize_start_date(start_date)
+        norm_end = normalize_end_date(end_date)
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT payload FROM events
+            WHERE (? IS NULL OR event_date >= ?)
+              AND (? IS NULL OR event_date <= ?)
+            ORDER BY event_date DESC
+            """,
+            (norm_start, norm_start, norm_end, norm_end),
+        )
+        events = []
+        for row in cur.fetchall():
+            try:
+                events.append(json.loads(row[0]))
+            except Exception:
+                pass
+        return events
+
     def merge_events(self, new_events: List[Dict[str, Any]]) -> None:
         if not self.enabled or not self.conn or not new_events:
             return
@@ -281,7 +530,13 @@ class SQLiteTraceCache:
             return []
         cur = self.conn.cursor()
         cur.execute("SELECT payload FROM events ORDER BY event_date DESC")
-        return [json.loads(row[0]) for row in cur.fetchall()]
+        events = []
+        for row in cur.fetchall():
+            try:
+                events.append(json.loads(row[0]))
+            except Exception:
+                pass
+        return events
 
     def get_events_count(self) -> int:
         if not self.enabled or not self.conn:

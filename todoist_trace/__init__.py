@@ -10,6 +10,8 @@ from .cache import (
     SQLiteTraceCache,
     TaskCacheDict,
     TraceCache,
+    calculate_missing_intervals,
+    coalesce_intervals,
     create_cache,
 )
 from .cli import parse_args, resolve_settings
@@ -47,6 +49,8 @@ __all__ = [
     "TaskHierarchyResolver",
     "TraceCache",
     "build_trace_records",
+    "calculate_missing_intervals",
+    "coalesce_intervals",
     "create_cache",
     "export_csv",
     "export_markdown",

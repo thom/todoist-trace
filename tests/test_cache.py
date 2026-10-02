@@ -1,5 +1,6 @@
 """
-Unit tests for persistent caching (TraceCache, SQLiteTraceCache, and factory).
+Unit tests for persistent caching (TraceCache, SQLiteTraceCache, and factory),
+including interval arithmetic and range-aware synchronization scenarios.
 """
 
 import json
@@ -9,8 +10,92 @@ import pytest
 from todoist_trace.cache import (
     SQLiteTraceCache,
     TraceCache,
+    calculate_missing_intervals,
+    coalesce_intervals,
     create_cache,
 )
+
+
+class TestIntervalArithmetic:
+    """Test suite for interval coalescing and missing gap calculations."""
+
+    def test_coalesce_intervals_disjoint_and_overlapping(self):
+        # 1. Overlapping intervals: [Sept 1, Sept 30] and [Sept 20, Oct 10]
+        raw = [
+            ("2026-09-01T00:00:00Z", "2026-09-30T23:59:59Z", False),
+            ("2026-09-20T00:00:00Z", "2026-10-10T23:59:59Z", False),
+        ]
+        coalesced = coalesce_intervals(raw)
+        assert len(coalesced) == 1
+        assert coalesced[0][0] == "2026-09-01T00:00:00Z"
+        assert coalesced[0][1] == "2026-10-10T23:59:59Z"
+        assert not coalesced[0][2]
+
+        # 2. Contiguous abutting intervals: [Jan 1, Feb 1] and [Feb 1, March 1]
+        raw_contiguous = [
+            ("2026-01-01T00:00:00Z", "2026-02-01T00:00:00Z", False),
+            ("2026-02-01T00:00:00Z", "2026-03-01T00:00:00Z", False),
+        ]
+        merged = coalesce_intervals(raw_contiguous)
+        assert len(merged) == 1
+        assert merged[0][0] == "2026-01-01T00:00:00Z"
+        assert merged[0][1] == "2026-03-01T00:00:00Z"
+
+        # 3. Disjoint intervals: [Jan, Feb] and [May, June]
+        raw_disjoint = [
+            ("2026-05-01T00:00:00Z", "2026-06-01T00:00:00Z", False),
+            ("2026-01-01T00:00:00Z", "2026-02-01T00:00:00Z", False),
+        ]
+        sorted_disjoint = coalesce_intervals(raw_disjoint)
+        assert len(sorted_disjoint) == 2
+        assert sorted_disjoint[0][0] == "2026-01-01T00:00:00Z"
+        assert sorted_disjoint[1][0] == "2026-05-01T00:00:00Z"
+
+    def test_coalesce_intervals_preserves_genesis(self):
+        intervals = [
+            ("1970-01-01T00:00:00Z", "2026-01-01T00:00:00Z", True),
+            ("2026-01-01T00:00:00Z", "2026-10-01T00:00:00Z", False),
+        ]
+        coalesced = coalesce_intervals(intervals)
+        assert len(coalesced) == 1
+        assert coalesced[0][2] is True
+
+    def test_calculate_missing_intervals_subset_hit(self):
+        # Cache covers Sept 1 to Sept 30
+        existing = [("2026-09-01T00:00:00Z", "2026-09-30T23:59:59Z", False)]
+        # Request Sept 10 to Sept 20
+        missing = calculate_missing_intervals(existing, "2026-09-10", "2026-09-20")
+        assert missing == []
+
+    def test_calculate_missing_intervals_forward_gap(self):
+        # Cache covers Sept 1 to Sept 30
+        existing = [("2026-09-01T00:00:00Z", "2026-09-30T23:59:59Z", False)]
+        # Request Sept 2 to Oct 2 -> Only gap [Sept 30, Oct 2] needed
+        missing = calculate_missing_intervals(existing, "2026-09-02", "2026-10-02")
+        assert len(missing) == 1
+        assert missing[0][0] == "2026-09-30T23:59:59Z"
+        assert missing[0][1] == "2026-10-02T23:59:59Z"
+
+    def test_calculate_missing_intervals_backward_gap(self):
+        # Cache covers Sept 1 to Oct 2
+        existing = [("2026-09-01T00:00:00Z", "2026-10-02T23:59:59Z", False)]
+        # Request Jan 1 to Oct 2 -> Only gap [Jan 1, Sept 1] needed
+        missing = calculate_missing_intervals(existing, "2026-01-01", "2026-10-02")
+        assert len(missing) == 1
+        assert missing[0][0] == "2026-01-01T00:00:00Z"
+        assert missing[0][1] == "2026-09-01T00:00:00Z"
+
+    def test_calculate_missing_intervals_internal_gap(self):
+        # Cache has two disconnected islands: Sept 1-10 and Sept 20-30
+        existing = [
+            ("2026-09-01T00:00:00Z", "2026-09-10T23:59:59Z", False),
+            ("2026-09-20T00:00:00Z", "2026-09-30T23:59:59Z", False),
+        ]
+        # Request Sept 5 to Sept 25 -> Missing internal hole: [Sept 10, Sept 20]
+        missing = calculate_missing_intervals(existing, "2026-09-05", "2026-09-25")
+        assert len(missing) == 1
+        assert missing[0][0] == "2026-09-10T23:59:59Z"
+        assert missing[0][1] == "2026-09-20T00:00:00Z"
 
 
 class TestTraceCache:
@@ -26,6 +111,7 @@ class TestTraceCache:
             {"id": "e1", "event_date": "2026-10-01T10:00:00Z", "extra_data": {"content": "E1"}},
             {"id": "e2", "event_date": "2026-10-02T12:00:00Z", "extra_data": {"content": "E2"}},
         ])
+        cache.record_sync_range("2026-10-01T00:00:00Z", "2026-10-02T23:59:59Z", is_genesis=False)
         cache.save()
 
         # Reload in a new instance
@@ -36,6 +122,7 @@ class TestTraceCache:
         assert len(reloaded.events) == 2
         assert reloaded.get_latest_event_date() == "2026-10-02T12:00:00Z"
         assert [e["id"] for e in reloaded.get_all_events()] == ["e2", "e1"]
+        assert len(reloaded.get_sync_ranges()) == 1
 
     def test_disabled_cache(self, tmp_path):
         cache_file = tmp_path / "disabled_cache.json"
@@ -46,7 +133,7 @@ class TestTraceCache:
 
 
 class TestSQLiteTraceCache:
-    """Test suite for SQLiteTraceCache functionality."""
+    """Test suite for SQLiteTraceCache functionality and range-aware sync."""
 
     def test_sqlite_save_and_load(self, tmp_path):
         db_file = tmp_path / "test_cache.db"
@@ -58,6 +145,7 @@ class TestSQLiteTraceCache:
             {"id": "e1", "event_date": "2026-10-01T10:00:00Z", "extra_data": {"content": "E1"}},
             {"id": "e2", "event_date": "2026-10-02T12:00:00Z", "extra_data": {"content": "E2"}},
         ])
+        cache.record_sync_range("2026-10-01T00:00:00Z", "2026-10-02T23:59:59Z", is_genesis=False)
         cache.save()
 
         # Reload in a new instance
@@ -67,13 +155,116 @@ class TestSQLiteTraceCache:
         assert reloaded.tasks["t1"]["content"] == "Task 1"
         assert reloaded.get_events_count() == 2
         assert reloaded.get_latest_event_date() == "2026-10-02T12:00:00Z"
+        assert reloaded.get_oldest_event_date() == "2026-10-01T10:00:00Z"
+        assert len(reloaded.get_sync_ranges()) == 1
         all_events = reloaded.get_all_events()
         assert [e["id"] for e in all_events] == ["e2", "e1"]
         reloaded.close()
         cache.close()
 
+    def test_sqlite_range_query_with_index(self, tmp_path):
+        db_file = tmp_path / "index_test.db"
+        cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+        cache.merge_events([
+            {"id": "e1", "event_date": "2026-09-05T10:00:00Z", "payload": json.dumps({"id": "e1"})},
+            {"id": "e2", "event_date": "2026-09-15T10:00:00Z", "payload": json.dumps({"id": "e2"})},
+            {"id": "e3", "event_date": "2026-09-25T10:00:00Z", "payload": json.dumps({"id": "e3"})},
+        ])
+        # Query window [Sept 10, Sept 20]
+        events = cache.get_events_in_range("2026-09-10", "2026-09-20")
+        assert len(events) == 1
+        assert events[0]["id"] == "e2"
+        cache.close()
+
+    def test_zero_activity_day_does_not_cause_cache_miss(self, tmp_path):
+        """
+        Verify that a day with zero completed tasks is correctly recognized as cached
+        if it falls within a recorded sync_range.
+        """
+        db_file = tmp_path / "zero_activity.db"
+        cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+
+        # Range Sept 1 to Sept 30 was synced, but only 1 task completed on Sept 15
+        cache.merge_events([
+            {"id": "e1", "event_date": "2026-09-15T12:00:00Z", "payload": json.dumps({"id": "e1"})},
+        ])
+        cache.record_sync_range("2026-09-01T00:00:00Z", "2026-09-30T23:59:59Z", is_genesis=False)
+
+        # Query Sept 1 to Sept 10 (where 0 tasks occurred)
+        assert cache.is_range_cached("2026-09-01", "2026-09-10") is True
+        missing = cache.get_missing_ranges("2026-09-01", "2026-09-10")
+        assert missing == []
+
+        events = cache.get_events_in_range("2026-09-01", "2026-09-10")
+        assert events == []
+        cache.close()
+
+    def test_progressive_sync_scenarios(self, tmp_path):
+        """
+        End-to-end test simulating user's exact three sequential scenarios:
+        1. Initial sync: 2026-09-01 to 2026-09-30
+        2. Rolling last 30 days: 2026-09-02 to 2026-10-02
+        3. Expanding backfill: 2026-01-01 to 2026-10-02
+        """
+        db_file = tmp_path / "progressive_sync.db"
+        cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+
+        # 1. Initial sync: Sept 1 to Sept 30
+        missing_1 = cache.get_missing_ranges("2026-09-01", "2026-09-30")
+        assert len(missing_1) == 1
+        assert missing_1[0] == ("2026-09-01T00:00:00Z", "2026-09-30T23:59:59Z")
+        cache.record_sync_range("2026-09-01T00:00:00Z", "2026-09-30T23:59:59Z")
+
+        # 2. Rolling last 30 days: Sept 2 to Oct 2
+        # Only future gap [Sept 30, Oct 2] should be returned!
+        missing_2 = cache.get_missing_ranges("2026-09-02", "2026-10-02")
+        assert len(missing_2) == 1
+        assert missing_2[0] == ("2026-09-30T23:59:59Z", "2026-10-02T23:59:59Z")
+        # Record the forward gap
+        cache.record_sync_range("2026-09-30T23:59:59Z", "2026-10-02T23:59:59Z")
+        ranges = cache.get_sync_ranges()
+        assert len(ranges) == 1
+        assert ranges[0][0] == "2026-09-01T00:00:00Z"
+        assert ranges[0][1] == "2026-10-02T23:59:59Z"
+
+        # 3. Expanding backfill: Jan 1 to Oct 2
+        # Only past gap [Jan 1, Sept 1] should be returned!
+        missing_3 = cache.get_missing_ranges("2026-01-01", "2026-10-02")
+        assert len(missing_3) == 1
+        assert missing_3[0] == ("2026-01-01T00:00:00Z", "2026-09-01T00:00:00Z")
+        # Record the backward gap
+        cache.record_sync_range("2026-01-01T00:00:00Z", "2026-09-01T00:00:00Z")
+        ranges_after_backfill = cache.get_sync_ranges()
+        assert len(ranges_after_backfill) == 1
+        assert ranges_after_backfill[0][0] == "2026-01-01T00:00:00Z"
+        assert ranges_after_backfill[0][1] == "2026-10-02T23:59:59Z"
+
+        # 4. Subset query: March 1 to May 1 -> 100% cache hit
+        assert cache.is_range_cached("2026-03-01", "2026-05-01") is True
+        assert cache.get_missing_ranges("2026-03-01", "2026-05-01") == []
+
+        cache.close()
+
+    def test_sqlite_backward_compatibility_init_sync_ranges(self, tmp_path):
+        """Ensure an existing database without sync_ranges table initializes bounds from events."""
+        db_file = tmp_path / "legacy_v1.db"
+        # Manually create legacy database without sync_ranges table
+        conn = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+        conn.merge_events([
+            {"id": "ev_old", "event_date": "2026-08-01T12:00:00Z", "payload": json.dumps({"id": "ev_old"})},
+            {"id": "ev_new", "event_date": "2026-08-31T12:00:00Z", "payload": json.dumps({"id": "ev_new"})},
+        ])
+        conn.close()
+
+        # Reopen cache
+        reopened = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+        ranges = reopened.get_sync_ranges()
+        assert len(ranges) == 1
+        assert ranges[0][0] == "2026-08-01T12:00:00Z"
+        assert ranges[0][1] == "2026-08-31T12:00:00Z"
+        reopened.close()
+
     def test_sqlite_auto_migration(self, tmp_path, monkeypatch):
-        # Create a mock legacy JSON file
         legacy_json = tmp_path / "legacy.json"
         legacy_data = {
             "projects": [{"id": "p_legacy", "name": "Legacy Project"}],
@@ -112,3 +303,177 @@ class TestSQLiteTraceCache:
         c_sqlite = create_cache(sqlite_file)
         assert isinstance(c_sqlite, SQLiteTraceCache)
         c_sqlite.close()
+
+
+class TestCacheEdgeCases:
+    """Detailed edge-case testing for interval arithmetic, boundary conditions, and SQLite cache."""
+
+    def test_midnight_boundary_abutting_intervals_coalesce(self):
+        """Consecutive days (differing by 1s across midnight) must coalesce and not leave micro-gaps."""
+        iv1 = ("2026-09-01T00:00:00Z", "2026-09-01T23:59:59Z", False)
+        iv2 = ("2026-09-02T00:00:00Z", "2026-09-02T23:59:59Z", False)
+        coalesced = coalesce_intervals([iv1, iv2])
+        assert len(coalesced) == 1
+        assert coalesced[0] == ("2026-09-01T00:00:00Z", "2026-09-02T23:59:59Z", False)
+
+        # Query spanning across the midnight boundary should be 100% cached
+        missing = calculate_missing_intervals([iv1, iv2], "2026-09-01", "2026-09-02")
+        assert missing == []
+
+    def test_inverted_date_range_returns_empty(self):
+        """Inverted date range (start > end) must return empty list to prevent invalid fetches."""
+        # Empty cache
+        assert calculate_missing_intervals([], "2026-10-10", "2026-10-01") == []
+
+        # Non-empty cache
+        existing = [("2026-09-01T00:00:00Z", "2026-09-30T23:59:59Z", False)]
+        assert calculate_missing_intervals(existing, "2026-10-10", "2026-10-01") == []
+
+    def test_empty_intervals_and_none_bounds(self):
+        """Ensure missing interval calculation works when existing intervals are empty."""
+        missing = calculate_missing_intervals([], "2026-09-01", "2026-09-30")
+        assert missing == [("2026-09-01T00:00:00Z", "2026-09-30T23:59:59Z")]
+
+        missing_genesis = calculate_missing_intervals([], None, "2026-09-30")
+        assert missing_genesis == [(None, "2026-09-30T23:59:59Z")]
+
+    def test_unbounded_past_genesis_preservation(self):
+        """Verify behavior with genesis intervals (is_genesis=True)."""
+        existing = [("1970-01-01T00:00:00Z", "2026-06-01T00:00:00Z", True)]
+
+        # 1. Historical query within genesis window -> 100% cache hit
+        assert calculate_missing_intervals(existing, None, "2026-05-01") == []
+
+        # 2. Historical query expanding forward beyond genesis window -> only forward gap needed
+        missing_forward = calculate_missing_intervals(existing, None, "2026-08-01")
+        assert len(missing_forward) == 1
+        assert missing_forward[0] == ("2026-06-01T00:00:00Z", "2026-08-01T23:59:59Z")
+
+        # 3. Cache without genesis -> needs backward backfill to None
+        existing_non_genesis = [("2026-06-01T00:00:00Z", "2026-08-01T00:00:00Z", False)]
+        missing_backfill = calculate_missing_intervals(existing_non_genesis, None, "2026-07-01")
+        assert len(missing_backfill) == 1
+        assert missing_backfill[0] == (None, "2026-06-01T00:00:00Z")
+
+    def test_exact_boundary_hits(self):
+        """Queries landing exactly on existing interval boundaries must be full hits."""
+        existing = [("2026-01-01T00:00:00Z", "2026-06-30T23:59:59Z", False)]
+
+        # Exact match
+        assert calculate_missing_intervals(existing, "2026-01-01", "2026-06-30") == []
+        # Left boundary
+        assert calculate_missing_intervals(existing, "2026-01-01", "2026-02-01") == []
+        # Right boundary
+        assert calculate_missing_intervals(existing, "2026-05-01", "2026-06-30") == []
+        # Point query (start == end)
+        assert calculate_missing_intervals(existing, "2026-03-15T12:00:00Z", "2026-03-15T12:00:00Z") == []
+
+    def test_completely_disjoint_out_of_bounds_queries(self):
+        """Queries completely before or after cached ranges must return full requested window."""
+        existing = [("2026-06-01T00:00:00Z", "2026-08-01T23:59:59Z", False)]
+
+        # Completely before
+        missing_before = calculate_missing_intervals(existing, "2026-01-01", "2026-03-01")
+        assert missing_before == [("2026-01-01T00:00:00Z", "2026-03-01T23:59:59Z")]
+
+        # Completely after
+        missing_after = calculate_missing_intervals(existing, "2026-10-01", "2026-12-01")
+        assert missing_after == [("2026-10-01T00:00:00Z", "2026-12-01T23:59:59Z")]
+
+    def test_multiple_intermediate_holes_swiss_cheese(self):
+        """Ensure multiple disconnected gap intervals are accurately identified."""
+        existing = [
+            ("2026-01-01T00:00:00Z", "2026-01-31T23:59:59Z", False),
+            ("2026-03-01T00:00:00Z", "2026-03-31T23:59:59Z", False),
+            ("2026-05-01T00:00:00Z", "2026-05-31T23:59:59Z", False),
+        ]
+        # Query spanning all three islands from Jan 15 to May 15
+        missing = calculate_missing_intervals(existing, "2026-01-15", "2026-05-15")
+        assert len(missing) == 2
+        assert missing[0] == ("2026-01-31T23:59:59Z", "2026-03-01T00:00:00Z")
+        assert missing[1] == ("2026-03-31T23:59:59Z", "2026-05-01T00:00:00Z")
+
+    def test_coalesce_duplicate_and_nested_intervals(self):
+        """Coalescing must absorb duplicates and nested intervals properly."""
+        raw = [
+            ("2026-01-01T00:00:00Z", "2026-12-31T23:59:59Z", False),
+            ("2026-01-01T00:00:00Z", "2026-12-31T23:59:59Z", False),  # Duplicate
+            ("2026-03-01T00:00:00Z", "2026-04-01T23:59:59Z", False),  # Subset
+        ]
+        coalesced = coalesce_intervals(raw)
+        assert len(coalesced) == 1
+        assert coalesced[0] == ("2026-01-01T00:00:00Z", "2026-12-31T23:59:59Z", False)
+
+    def test_sqlite_corrupt_payload_graceful_handling(self, tmp_path):
+        """Corrupted JSON in event payload must be skipped rather than crashing queries."""
+        db_file = tmp_path / "corrupt.db"
+        cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+
+        with cache.conn:
+            cache.conn.execute(
+                "INSERT INTO events (id, event_date, payload) VALUES (?, ?, ?)",
+                ("valid_1", "2026-09-10T10:00:00Z", json.dumps({"id": "valid_1"})),
+            )
+            cache.conn.execute(
+                "INSERT INTO events (id, event_date, payload) VALUES (?, ?, ?)",
+                ("corrupt_1", "2026-09-15T10:00:00Z", "MALFORMED_JSON{{{"),
+            )
+            cache.conn.execute(
+                "INSERT INTO events (id, event_date, payload) VALUES (?, ?, ?)",
+                ("valid_2", "2026-09-20T10:00:00Z", json.dumps({"id": "valid_2"})),
+            )
+
+        events_range = cache.get_events_in_range("2026-09-01", "2026-09-30")
+        assert len(events_range) == 2
+        assert [e["id"] for e in events_range] == ["valid_2", "valid_1"]
+
+        events_all = cache.get_all_events()
+        assert len(events_all) == 2
+        assert [e["id"] for e in events_all] == ["valid_2", "valid_1"]
+
+        cache.close()
+
+    def test_sqlite_empty_table_edge_cases(self, tmp_path):
+        """Empty tables should cleanly return None, empty lists, or False without errors."""
+        db_file = tmp_path / "empty.db"
+        cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+
+        assert cache.get_latest_event_date() is None
+        assert cache.get_oldest_event_date() is None
+        assert cache.get_date_bounds() == (None, None)
+        assert cache.get_sync_ranges() == []
+        assert cache.get_events_count() == 0
+        assert cache.get_all_events() == []
+        assert cache.get_events_in_range("2026-01-01", "2026-12-31") == []
+        assert cache.is_range_cached("2026-01-01", "2026-12-31") is False
+
+        cache.close()
+
+    def test_single_day_start_equals_end_sync(self):
+        """Single-day query (start == end) covers the full 24h interval."""
+        missing = calculate_missing_intervals([], "2026-10-01", "2026-10-01")
+        assert len(missing) == 1
+        assert missing[0] == ("2026-10-01T00:00:00Z", "2026-10-01T23:59:59Z")
+
+        # Once recorded, query for the same single day is a 100% cache hit
+        coalesced = coalesce_intervals([("2026-10-01T00:00:00Z", "2026-10-01T23:59:59Z", False)])
+        assert calculate_missing_intervals(coalesced, "2026-10-01", "2026-10-01") == []
+
+    def test_future_end_date_capped_at_now_never_poisons_cache(self, tmp_path):
+        """Syncing with future end date must cap effective_end at now so future tasks aren't ignored."""
+        from datetime import datetime, timezone
+        db_file = tmp_path / "future_test.db"
+        cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+
+        now_iso = "2026-10-02T12:00:00Z"
+        future_gap_end = "2026-10-10T23:59:59Z"
+        effective_end = min(future_gap_end, now_iso)
+
+        cache.record_sync_range("2026-10-01T00:00:00Z", effective_end)
+        ranges = cache.get_sync_ranges()
+        assert len(ranges) == 1
+        assert ranges[0][1] == "2026-10-02T12:00:00Z"
+        assert ranges[0][1] != future_gap_end
+
+        cache.close()
+

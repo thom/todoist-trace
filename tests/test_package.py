@@ -18,6 +18,8 @@ class TestModularPackageStructure:
             "TaskHierarchyResolver",
             "TraceCache",
             "build_trace_records",
+            "calculate_missing_intervals",
+            "coalesce_intervals",
             "create_cache",
             "export_csv",
             "export_markdown",

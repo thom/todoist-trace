@@ -3,10 +3,15 @@ Main orchestration and CLI entry point for todoist-trace.
 """
 
 import sys
+from datetime import datetime, timezone
 from typing import Optional
 
 from .api import fetch_completed_activities, fetch_projects
-from .cache import create_cache
+from .cache import (
+    create_cache,
+    normalize_end_date,
+    normalize_start_date,
+)
 from .cli import parse_args, resolve_settings
 from .exporters import export_csv, export_markdown
 from .filters import filter_records
@@ -16,7 +21,11 @@ from .resolvers import ProjectTreeResolver, TaskHierarchyResolver, build_trace_r
 def main(argv: Optional[list] = None) -> int:
     """Main CLI entrypoint."""
     args = parse_args(argv)
-    settings = resolve_settings(args)
+    try:
+        settings = resolve_settings(args)
+    except ValueError as e:
+        sys.stderr.write(f"Error: {e}\n")
+        return 1
 
     if not settings["token"]:
         sys.stderr.write(
@@ -56,31 +65,49 @@ def main(argv: Optional[list] = None) -> int:
 
     project_resolver = ProjectTreeResolver(projects)
 
-    # 3. Fetch completed activities (incremental if cached)
-    date_from = None
-    if settings.get("start_date"):
-        date_from = f"{settings['start_date']}T00:00:00Z"
-    elif cache.enabled and cache.get_events_count() > 0 and not settings.get("refresh"):
-        latest_cached = cache.get_latest_event_date()
-        if latest_cached:
-            date_from = latest_cached
-            print(f"Incremental sync: checking for events newer than {latest_cached}...")
+    # 3. Fetch completed activities (gap-filling range-aware sync)
+    req_start = settings.get("start_date")
+    req_end = settings.get("end_date")
 
-    date_to = f"{settings['end_date']}T23:59:59Z" if settings.get("end_date") else None
+    if cache.enabled and not settings.get("refresh"):
+        missing_ranges = cache.get_missing_ranges(req_start, req_end)
+    else:
+        norm_s = normalize_start_date(req_start)
+        norm_e = normalize_end_date(req_end) or datetime.now(timezone.utc).isoformat()
+        missing_ranges = [(norm_s, norm_e)]
 
-    print("Fetching completed activities (read-only)...")
-    try:
-        new_events = fetch_completed_activities(settings["token"], date_from=date_from, date_to=date_to)
-        if cache.enabled:
-            cache.merge_events(new_events)
-            all_events = cache.get_all_events()
-            print(f"Retrieved {len(new_events)} new events ({len(all_events)} total events in cache).")
-        else:
-            all_events = new_events
-            print(f"Retrieved {len(all_events)} completed activity events.")
-    except (ValueError, RuntimeError) as e:
-        sys.stderr.write(f"Error: {e}\n")
-        return 1
+    new_events = []
+    if not missing_ranges:
+        print(f"Requested date range is fully cached in SQLite ({cache.get_events_count()} events in cache). Zero API calls needed.")
+    else:
+        print("Fetching completed activities (read-only)...")
+        for gap_start, gap_end in missing_ranges:
+            desc_from = gap_start[:10] if gap_start else "account creation"
+            desc_to = gap_end[:10] if gap_end else "present"
+            print(f"Syncing missing range: {desc_from} to {desc_to}...")
+            try:
+                fetched = fetch_completed_activities(settings["token"], date_from=gap_start, date_to=gap_end)
+                new_events.extend(fetched)
+                if cache.enabled:
+                    cache.merge_events(fetched)
+                    is_genesis = (gap_start is None)
+                    now_iso = datetime.now(timezone.utc).isoformat()
+                    # A cache cannot record synchronization beyond the present moment
+                    effective_end = min(gap_end, now_iso) if gap_end else now_iso
+                    effective_start = gap_start or (fetched[-1]["event_date"] if fetched else "1970-01-01T00:00:00Z")
+                    if effective_start < effective_end:
+                        cache.record_sync_range(effective_start, effective_end, is_genesis=is_genesis)
+                    print(f"Retrieved {len(fetched)} events for range ({cache.get_events_count()} total in cache).")
+            except (ValueError, RuntimeError) as e:
+                sys.stderr.write(f"Error: {e}\n")
+                return 1
+
+    # Load matching events from cache
+    if cache.enabled:
+        cache.save()
+        all_events = cache.get_events_in_range(req_start, req_end)
+    else:
+        all_events = new_events
 
     # 4. Resolve tasks
     task_resolver = TaskHierarchyResolver(settings["token"], cache=cache if cache.enabled else None)
