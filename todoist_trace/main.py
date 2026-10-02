@@ -68,12 +68,13 @@ def main(argv: Optional[list] = None) -> int:
     # 3. Fetch completed activities (gap-filling range-aware sync)
     req_start = settings.get("start_date")
     req_end = settings.get("end_date")
+    tz = settings.get("tz")
 
     if cache.enabled and not settings.get("refresh"):
-        missing_ranges = cache.get_missing_ranges(req_start, req_end)
+        missing_ranges = cache.get_missing_ranges(req_start, req_end, tz=tz)
     else:
-        norm_s = normalize_start_date(req_start)
-        norm_e = normalize_end_date(req_end) or datetime.now(timezone.utc).isoformat()
+        norm_s = normalize_start_date(req_start, tz=tz)
+        norm_e = normalize_end_date(req_end, tz=tz) or datetime.now(timezone.utc).isoformat()
         missing_ranges = [(norm_s, norm_e)]
 
     new_events = []
@@ -105,12 +106,12 @@ def main(argv: Optional[list] = None) -> int:
     # Load matching events from cache
     if cache.enabled:
         cache.save()
-        all_events = cache.get_events_in_range(req_start, req_end)
+        all_events = cache.get_events_in_range(req_start, req_end, tz=tz)
     else:
         all_events = new_events
 
     # 4. Resolve tasks
-    task_resolver = TaskHierarchyResolver(settings["token"], cache=cache if cache.enabled else None)
+    task_resolver = TaskHierarchyResolver(settings["token"], cache=cache if cache.enabled else None, tz=tz)
     all_records = build_trace_records(all_events, project_resolver, task_resolver)
 
     # Save updated cache (including newly resolved tasks)

@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .config import DEFAULT_CACHE_PATH, load_config
+from .config import DEFAULT_CACHE_PATH, load_config, resolve_timezone
 
 
 def parse_args(argv: Optional[list] = None) -> argparse.Namespace:
@@ -15,6 +15,12 @@ def parse_args(argv: Optional[list] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="todoist-trace",
         description="Export Todoist activity logs into structured CSV or Markdown files with project and task hierarchy resolution.",
+    )
+    parser.add_argument(
+        "-z", "--timezone",
+        type=str,
+        default=None,
+        help="Timezone for daily overview and exports (e.g. 'Europe/Zurich', 'UTC', or 'local') (default: local)",
     )
     parser.add_argument(
         "-f", "--format",
@@ -142,6 +148,10 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         cache_file = str(DEFAULT_CACHE_PATH)
     refresh = args.refresh
 
+    # 8. Timezone
+    raw_tz = args.timezone or os.environ.get("TODOIST_TRACE_TIMEZONE") or file_cfg.get("timezone") or "local"
+    tz = resolve_timezone(raw_tz)
+
     return {
         "token": token,
         "format": output_format,
@@ -154,4 +164,6 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         "cache_enabled": cache_enabled,
         "cache_file": cache_file,
         "refresh": refresh,
+        "timezone": raw_tz,
+        "tz": tz,
     }

@@ -26,6 +26,7 @@ class TestModularPackageStructure:
             "fetch_completed_activities",
             "fetch_projects",
             "filter_records",
+            "format_event_datetime",
             "format_task_bullets",
             "generate_csv",
             "generate_markdown",
@@ -34,6 +35,7 @@ class TestModularPackageStructure:
             "main",
             "parse_args",
             "resolve_settings",
+            "resolve_timezone",
         ]
         for name in expected_exports:
             assert hasattr(todoist_trace, name), f"Missing export: {name}"

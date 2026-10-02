@@ -24,6 +24,7 @@ from todoist_trace import (
     fetch_completed_activities,
     fetch_projects,
     filter_records,
+    format_event_datetime,
     format_task_bullets,
     generate_csv,
     generate_markdown,
@@ -32,6 +33,7 @@ from todoist_trace import (
     main,
     parse_args,
     resolve_settings,
+    resolve_timezone,
 )
 
 __all__ = [
@@ -53,6 +55,7 @@ __all__ = [
     "fetch_completed_activities",
     "fetch_projects",
     "filter_records",
+    "format_event_datetime",
     "format_task_bullets",
     "generate_csv",
     "generate_markdown",
@@ -61,6 +64,7 @@ __all__ = [
     "main",
     "parse_args",
     "resolve_settings",
+    "resolve_timezone",
 ]
 
 if __name__ == "__main__":

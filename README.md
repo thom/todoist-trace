@@ -96,6 +96,7 @@ Create `~/.todoist-trace/config.json` to store your API token and preferred defa
   "token": "0123456789abcdef0123456789abcdef01234567",
   "format": "markdown",
   "category": "all",
+  "timezone": "Europe/Zurich",
   "markdown_style": "nested",
   "task_style": "nested"
 }
@@ -160,6 +161,7 @@ python3 todoist_trace.py --no-cache -f markdown -o trace_live.md
 | `--format` | `-f` | `csv` | Output format: `csv`, `markdown`, or `md`. |
 | `--start-date` | `-s` | `None` | Start date filter in `YYYY-MM-DD` format (inclusive). |
 | `--end-date` | `-e` | `None` | End date filter in `YYYY-MM-DD` format (inclusive). |
+| `--timezone` | `-z` | `local` | Timezone for daily overview and exports (e.g. `Europe/Zurich`, `UTC`, `local`). |
 | `--category` | `-c` | `all` | Top-level project filter: `work`, `personal`, or `all`. |
 | `--output` | `-o` | Auto | Output file path (`todoist_trace_export.csv` or `.md`). |
 | `--token` | `-t` | Env/Config | Todoist REST API v1 token. |

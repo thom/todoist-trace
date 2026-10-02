@@ -7,29 +7,51 @@ range synchronization and auto-migration.
 import json
 import sqlite3
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone, tzinfo
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-from .config import DEFAULT_CACHE_PATH, DEFAULT_JSON_CACHE_PATH
+from .config import DEFAULT_CACHE_PATH, DEFAULT_JSON_CACHE_PATH, resolve_timezone
 
 
-def normalize_start_date(dt_str: Optional[str]) -> Optional[str]:
+def normalize_start_date(
+    dt_str: Optional[str],
+    tz: Optional[Union[str, tzinfo]] = None,
+) -> Optional[str]:
     """Normalize a date or timestamp string into an ISO UTC start timestamp."""
     if not dt_str:
         return None
     if "T" in dt_str:
         return dt_str
-    return f"{dt_str}T00:00:00Z"
+    if tz is None:
+        return f"{dt_str}T00:00:00Z"
+    try:
+        target_tz = resolve_timezone(tz)
+        dt_local_date = datetime.strptime(dt_str, "%Y-%m-%d").date()
+        dt_local = datetime.combine(dt_local_date, time(0, 0, 0), tzinfo=target_tz)
+        return dt_local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except Exception:
+        return f"{dt_str}T00:00:00Z"
 
 
-def normalize_end_date(dt_str: Optional[str]) -> Optional[str]:
+def normalize_end_date(
+    dt_str: Optional[str],
+    tz: Optional[Union[str, tzinfo]] = None,
+) -> Optional[str]:
     """Normalize a date or timestamp string into an ISO UTC end timestamp."""
     if not dt_str:
         return None
     if "T" in dt_str:
         return dt_str
-    return f"{dt_str}T23:59:59Z"
+    if tz is None:
+        return f"{dt_str}T23:59:59Z"
+    try:
+        target_tz = resolve_timezone(tz)
+        dt_local_date = datetime.strptime(dt_str, "%Y-%m-%d").date()
+        dt_local = datetime.combine(dt_local_date, time(23, 59, 59), tzinfo=target_tz)
+        return dt_local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except Exception:
+        return f"{dt_str}T23:59:59Z"
 
 
 def _is_contiguous_or_overlapping(end_str: str, start_str: str, tolerance_seconds: int = 1) -> bool:
@@ -79,14 +101,15 @@ def calculate_missing_intervals(
     existing: List[Tuple[str, str, bool]],
     req_start: Optional[str],
     req_end: Optional[str],
+    tz: Optional[Union[str, tzinfo]] = None,
 ) -> List[Tuple[Optional[str], Optional[str]]]:
     """
     Given existing synced intervals and a requested range [req_start, req_end],
     compute the minimal sub-intervals that need to be fetched from the API.
     Returns [] if the requested range is 100% cached or inverted.
     """
-    norm_start = normalize_start_date(req_start)
-    norm_end = normalize_end_date(req_end) or datetime.now(timezone.utc).isoformat()
+    norm_start = normalize_start_date(req_start, tz=tz)
+    norm_end = normalize_end_date(req_end, tz=tz) or datetime.now(timezone.utc).isoformat()
 
     # Guard against inverted date ranges (start > end)
     if norm_start and norm_end and norm_start > norm_end:
@@ -220,15 +243,30 @@ class TraceCache:
             for s, e, g in coalesced
         ]
 
-    def get_missing_ranges(self, req_start: Optional[str], req_end: Optional[str]) -> List[Tuple[Optional[str], Optional[str]]]:
-        return calculate_missing_intervals(self.get_sync_ranges(), req_start, req_end)
+    def get_missing_ranges(
+        self,
+        req_start: Optional[str],
+        req_end: Optional[str],
+        tz: Optional[Union[str, tzinfo]] = None,
+    ) -> List[Tuple[Optional[str], Optional[str]]]:
+        return calculate_missing_intervals(self.get_sync_ranges(), req_start, req_end, tz=tz)
 
-    def is_range_cached(self, req_start: Optional[str], req_end: Optional[str]) -> bool:
-        return len(self.get_missing_ranges(req_start, req_end)) == 0
+    def is_range_cached(
+        self,
+        req_start: Optional[str],
+        req_end: Optional[str],
+        tz: Optional[Union[str, tzinfo]] = None,
+    ) -> bool:
+        return len(self.get_missing_ranges(req_start, req_end, tz=tz)) == 0
 
-    def get_events_in_range(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
-        norm_start = normalize_start_date(start_date)
-        norm_end = normalize_end_date(end_date)
+    def get_events_in_range(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        tz: Optional[Union[str, tzinfo]] = None,
+    ) -> List[Dict[str, Any]]:
+        norm_start = normalize_start_date(start_date, tz=tz)
+        norm_end = normalize_end_date(end_date, tz=tz)
         filtered = []
         for ev in self.events.values():
             ev_date = str(ev.get("event_date", ""))
@@ -472,20 +510,35 @@ class SQLiteTraceCache:
                 rows,
             )
 
-    def get_missing_ranges(self, req_start: Optional[str], req_end: Optional[str]) -> List[Tuple[Optional[str], Optional[str]]]:
+    def get_missing_ranges(
+        self,
+        req_start: Optional[str],
+        req_end: Optional[str],
+        tz: Optional[Union[str, tzinfo]] = None,
+    ) -> List[Tuple[Optional[str], Optional[str]]]:
         """Compute missing range gaps that must be fetched from the API."""
-        return calculate_missing_intervals(self.get_sync_ranges(), req_start, req_end)
+        return calculate_missing_intervals(self.get_sync_ranges(), req_start, req_end, tz=tz)
 
-    def is_range_cached(self, req_start: Optional[str], req_end: Optional[str]) -> bool:
+    def is_range_cached(
+        self,
+        req_start: Optional[str],
+        req_end: Optional[str],
+        tz: Optional[Union[str, tzinfo]] = None,
+    ) -> bool:
         """Check if requested range is completely covered by cache."""
-        return len(self.get_missing_ranges(req_start, req_end)) == 0
+        return len(self.get_missing_ranges(req_start, req_end, tz=tz)) == 0
 
-    def get_events_in_range(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_events_in_range(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        tz: Optional[Union[str, tzinfo]] = None,
+    ) -> List[Dict[str, Any]]:
         """Retrieve events matching date range directly from SQLite using idx_events_date."""
         if not self.enabled or not self.conn:
             return []
-        norm_start = normalize_start_date(start_date)
-        norm_end = normalize_end_date(end_date)
+        norm_start = normalize_start_date(start_date, tz=tz)
+        norm_end = normalize_end_date(end_date, tz=tz)
         cur = self.conn.cursor()
         cur.execute(
             """

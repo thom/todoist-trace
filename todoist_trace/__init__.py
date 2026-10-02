@@ -22,6 +22,7 @@ from .config import (
     DEFAULT_JSON_CACHE_PATH,
     load_config,
     load_env_file,
+    resolve_timezone,
 )
 from .exporters import (
     export_csv,
@@ -36,6 +37,7 @@ from .resolvers import (
     ProjectTreeResolver,
     TaskHierarchyResolver,
     build_trace_records,
+    format_event_datetime,
 )
 
 __all__ = [
@@ -57,6 +59,7 @@ __all__ = [
     "fetch_completed_activities",
     "fetch_projects",
     "filter_records",
+    "format_event_datetime",
     "format_task_bullets",
     "generate_csv",
     "generate_markdown",
@@ -65,4 +68,5 @@ __all__ = [
     "main",
     "parse_args",
     "resolve_settings",
+    "resolve_timezone",
 ]

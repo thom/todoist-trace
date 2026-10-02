@@ -107,7 +107,7 @@ class TestTaskHierarchyResolver:
     """Test suite for TaskHierarchyResolver."""
 
     def test_top_level_task_without_parent(self):
-        resolver = TaskHierarchyResolver(token="dummy_token")
+        resolver = TaskHierarchyResolver(token="dummy_token", tz="UTC")
         event = {
             "id": "e1",
             "object_id": "t1",
@@ -149,7 +149,7 @@ class TestTaskHierarchyResolver:
 
         mock_get.side_effect = side_effect
 
-        resolver = TaskHierarchyResolver(token="dummy_token")
+        resolver = TaskHierarchyResolver(token="dummy_token", tz="UTC")
         event = {
             "id": "e100",
             "object_id": "t_leaf",
@@ -192,3 +192,54 @@ class TestTaskHierarchyResolver:
         res = resolver.resolve(event)
         assert "[Task deleted_parent_999] / Orphan Subtask" == res["task_path"]
         assert res["parent_task_id"] == "deleted_parent_999"
+
+    def test_timezone_conversion_positive_offset_cross_midnight(self):
+        """Task completed late evening in UTC belongs to the next day in Europe/Zurich (UTC+2)."""
+        resolver = TaskHierarchyResolver(token="dummy_token", tz="Europe/Zurich")
+        event = {
+            "id": "e_zurich",
+            "object_id": "t_zurich",
+            "event_date": "2026-09-30T22:30:00Z",
+            "extra_data": {"content": "Late Night Task", "parent_id": None},
+        }
+        res = resolver.resolve(event)
+        assert res["date"] == "2026-10-01"
+        assert res["time"] == "00:30:00"
+
+    def test_timezone_conversion_negative_offset_cross_midnight(self):
+        """Task completed early morning in UTC belongs to the previous day in America/Los_Angeles (UTC-7)."""
+        resolver = TaskHierarchyResolver(token="dummy_token", tz="America/Los_Angeles")
+        event = {
+            "id": "e_la",
+            "object_id": "t_la",
+            "event_date": "2026-10-02T05:30:00Z",
+            "extra_data": {"content": "Evening Task In LA", "parent_id": None},
+        }
+        res = resolver.resolve(event)
+        assert res["date"] == "2026-10-01"
+        assert res["time"] == "22:30:00"
+
+    def test_timezone_default_to_system_local(self):
+        """Defaulting tz to None or 'local' resolves against the host system timezone."""
+        resolver = TaskHierarchyResolver(token="dummy_token")
+        event = {
+            "id": "e_local",
+            "object_id": "t_local",
+            "event_date": "2026-10-02T12:00:00Z",
+            "extra_data": {"content": "Local Task", "parent_id": None},
+        }
+        res = resolver.resolve(event)
+        assert len(res["date"]) == 10
+        assert len(res["time"]) == 8
+
+    def test_format_event_datetime_empty_and_corrupt(self):
+        from todoist_trace.resolvers import format_event_datetime
+        assert format_event_datetime("") == ("", "")
+        assert format_event_datetime(None) == ("", "")
+        assert format_event_datetime("corrupt-string") == ("", "")
+        assert format_event_datetime("2026-10-02") == ("2026-10-02", "")
+
+    def test_invalid_timezone_raises_value_error(self):
+        import pytest
+        with pytest.raises(ValueError, match="Invalid timezone"):
+            TaskHierarchyResolver(token="dummy_token", tz="Invalid/Zone_Name")

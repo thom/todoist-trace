@@ -3,8 +3,42 @@ Project and task hierarchy resolvers for todoist-trace.
 Traces multi-level project trees and recursive parent-child task structures.
 """
 
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone, tzinfo
+from typing import Any, Dict, List, Optional, Tuple, Union
 import requests
+
+from .config import resolve_timezone
+
+
+def format_event_datetime(
+    event_date_str: Optional[str],
+    tz: Optional[Union[str, tzinfo]] = None,
+) -> Tuple[str, str]:
+    """
+    Format a UTC ISO-8601 event date string into (local_date, local_time).
+    Defaults to system local timezone if tz is None.
+    Returns ("", "") if event_date_str is empty or unparseable.
+    """
+    if not event_date_str:
+        return ("", "")
+
+    # Date-only string (no time component)
+    if "T" not in event_date_str:
+        try:
+            datetime.strptime(event_date_str[:10], "%Y-%m-%d")
+            return (event_date_str[:10], "")
+        except Exception:
+            return ("", "")
+
+    target_tz = resolve_timezone(tz)
+    try:
+        dt = datetime.fromisoformat(event_date_str.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        local_dt = dt.astimezone(target_tz)
+        return (local_dt.strftime("%Y-%m-%d"), local_dt.strftime("%H:%M:%S"))
+    except Exception:
+        return ("", "")
 
 
 class ProjectTreeResolver:
@@ -81,10 +115,12 @@ class TaskHierarchyResolver:
         token: str,
         preloaded_tasks: Optional[Dict[str, Dict[str, Any]]] = None,
         cache: Optional[Any] = None,
+        tz: Optional[Union[str, tzinfo]] = None,
     ):
         self.token = token
         self.headers = {"Authorization": f"Bearer {token}"}
         self.cache = cache
+        self.tz = resolve_timezone(tz)
         # Prioritize cache tasks, fallback to preloaded
         self.task_cache: Dict[str, Dict[str, Any]] = {}
         if cache and cache.tasks:
@@ -142,14 +178,7 @@ class TaskHierarchyResolver:
         parent_task_id = str(raw_parent_id) if raw_parent_id else ""
 
         event_date_str = str(event.get("event_date", ""))
-        date_part = ""
-        time_part = ""
-        if "T" in event_date_str:
-            parts = event_date_str.split("T", 1)
-            date_part = parts[0]
-            time_part = parts[1].split(".")[0].rstrip("Z")
-        elif len(event_date_str) >= 10:
-            date_part = event_date_str[:10]
+        date_part, time_part = format_event_datetime(event_date_str, tz=self.tz)
 
         if not parent_task_id:
             return {

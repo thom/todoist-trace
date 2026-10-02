@@ -58,3 +58,31 @@ class TestCLIAndSettings:
         settings = resolve_settings(args)
         assert settings["start_date"] == "2026-10-01"
         assert settings["end_date"] == "2026-10-01"
+
+    def test_cli_timezone_flag_and_resolution(self):
+        import pytest
+        from zoneinfo import ZoneInfo
+        from datetime import timezone
+
+        # Explicit IANA timezone
+        args_zurich = parse_args(["-z", "Europe/Zurich"])
+        settings_zurich = resolve_settings(args_zurich)
+        assert settings_zurich["timezone"] == "Europe/Zurich"
+        assert settings_zurich["tz"] == ZoneInfo("Europe/Zurich")
+
+        # UTC override
+        args_utc = parse_args(["--timezone", "UTC"])
+        settings_utc = resolve_settings(args_utc)
+        assert settings_utc["timezone"] == "UTC"
+        assert settings_utc["tz"] == timezone.utc
+
+        # Default local
+        args_default = parse_args([])
+        settings_default = resolve_settings(args_default)
+        assert settings_default["timezone"] == "local"
+        assert settings_default["tz"] is not None
+
+        # Invalid timezone raises ValueError
+        args_invalid = parse_args(["--timezone", "NonExistent/Zone"])
+        with pytest.raises(ValueError, match="Invalid timezone"):
+            resolve_settings(args_invalid)

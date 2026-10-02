@@ -136,3 +136,55 @@ class TestExporters:
         assert "- Sprint Deliverables / Services / Auth" in md_flat
         assert "- Sprint Deliverables / Services / Database" in md_flat
         assert "- Sprint Deliverables / Client Portal" in md_flat
+
+    def test_daily_overview_with_timezone_converted_records(self):
+        """Events resolved in local timezone group under their correct local day heading."""
+        from todoist_trace.resolvers import format_event_datetime
+
+        # Two events completed on 2026-10-01 in Europe/Zurich (UTC+2)
+        # 1. 00:15 AM local -> 2026-09-30 22:15 UTC
+        d1, t1 = format_event_datetime("2026-09-30T22:15:00Z", tz="Europe/Zurich")
+        # 2. 23:45 PM local -> 2026-10-01 21:45 UTC
+        d2, t2 = format_event_datetime("2026-10-01T21:45:00Z", tz="Europe/Zurich")
+
+        assert d1 == "2026-10-01"
+        assert t1 == "00:15:00"
+        assert d2 == "2026-10-01"
+        assert t2 == "23:45:00"
+
+        records = [
+            {
+                "top_level_project": "Work",
+                "project_path": "",
+                "project_levels": [],
+                "date": d1,
+                "time": t1,
+                "task_path": "Early Morning Deliverable",
+                "task_levels": ["Early Morning Deliverable"],
+                "parent_task_id": "",
+                "project_id": "p1",
+                "event_id": "e1",
+            },
+            {
+                "top_level_project": "Work",
+                "project_path": "",
+                "project_levels": [],
+                "date": d2,
+                "time": t2,
+                "task_path": "Late Night Wrapup",
+                "task_levels": ["Late Night Wrapup"],
+                "parent_task_id": "",
+                "project_id": "p1",
+                "event_id": "e2",
+            },
+        ]
+
+        md = generate_markdown(records, style="nested")
+        assert "## 2026-10-01" in md
+        assert "## 2026-09-30" not in md
+        assert "- Early Morning Deliverable" in md
+        assert "- Late Night Wrapup" in md
+
+        csv_out = generate_csv(records)
+        assert "Work,,2026-10-01,00:15:00,Early Morning Deliverable,,p1,e1" in csv_out
+        assert "Work,,2026-10-01,23:45:00,Late Night Wrapup,,p1,e2" in csv_out

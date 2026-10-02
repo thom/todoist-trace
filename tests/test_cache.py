@@ -477,3 +477,55 @@ class TestCacheEdgeCases:
 
         cache.close()
 
+    def test_normalize_dates_with_timezone(self):
+        """Date boundaries must correctly convert local midnight and 23:59:59 to UTC ISO."""
+        from todoist_trace.cache import normalize_end_date, normalize_start_date
+
+        # Europe/Zurich (UTC+2 in summer/CEST)
+        assert normalize_start_date("2026-10-01", tz="Europe/Zurich") == "2026-09-30T22:00:00Z"
+        assert normalize_end_date("2026-10-01", tz="Europe/Zurich") == "2026-10-01T21:59:59Z"
+
+        # America/Los_Angeles (UTC-7 in summer/PDT)
+        assert normalize_start_date("2026-10-01", tz="America/Los_Angeles") == "2026-10-01T07:00:00Z"
+        assert normalize_end_date("2026-10-01", tz="America/Los_Angeles") == "2026-10-02T06:59:59Z"
+
+        # UTC
+        assert normalize_start_date("2026-10-01", tz="UTC") == "2026-10-01T00:00:00Z"
+        assert normalize_end_date("2026-10-01", tz="UTC") == "2026-10-01T23:59:59Z"
+
+        # Default (tz=None) preserves backward-compatible UTC
+        assert normalize_start_date("2026-10-01", tz=None) == "2026-10-01T00:00:00Z"
+        assert normalize_end_date("2026-10-01", tz=None) == "2026-10-01T23:59:59Z"
+
+    def test_sqlite_cache_range_query_with_timezone(self, tmp_path):
+        """A task completed at 00:30 on 2026-10-01 in Zurich has UTC 2026-09-30T22:30:00Z."""
+        db_file = tmp_path / "tz_query.db"
+        cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+
+        # Task closed on 2026-10-01 at 00:30 AM in Zurich (2026-09-30 22:30 UTC)
+        cache.merge_events([
+            {
+                "id": "ev_night",
+                "event_date": "2026-09-30T22:30:00Z",
+                "object_id": "t1",
+                "extra_data": {"content": "Night Task"},
+            }
+        ])
+
+        # Query for 2026-10-01 in Europe/Zurich: should match!
+        events_zurich = cache.get_events_in_range("2026-10-01", "2026-10-01", tz="Europe/Zurich")
+        assert len(events_zurich) == 1
+        assert events_zurich[0]["id"] == "ev_night"
+
+        # Query for 2026-10-01 in UTC: should NOT match (belongs to 2026-09-30 in UTC)
+        events_utc = cache.get_events_in_range("2026-10-01", "2026-10-01", tz="UTC")
+        assert len(events_utc) == 0
+
+        # Query for 2026-09-30 in UTC: should match!
+        events_utc_prev = cache.get_events_in_range("2026-09-30", "2026-09-30", tz="UTC")
+        assert len(events_utc_prev) == 1
+        assert events_utc_prev[0]["id"] == "ev_night"
+
+        cache.close()
+
+

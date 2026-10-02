@@ -6,8 +6,35 @@ Handles discovery of user dotfiles (~/.todoist-trace/) and local overrides.
 import json
 import os
 import sys
+from datetime import datetime, timezone, tzinfo
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
+from zoneinfo import ZoneInfo
+
+
+def resolve_timezone(tz_name: Optional[Union[str, tzinfo]] = None) -> tzinfo:
+    """
+    Resolve a timezone identifier into a tzinfo object.
+    Supports:
+    - None or 'local' (case-insensitive): system local timezone
+    - 'UTC' (case-insensitive): timezone.utc
+    - IANA timezone string (e.g. 'Europe/Zurich', 'America/New_York')
+    - Existing tzinfo instance: returned as-is
+    Raises ValueError for invalid timezone names.
+    """
+    if tz_name is None or (isinstance(tz_name, str) and (not tz_name.strip() or tz_name.strip().lower() == "local")):
+        return datetime.now().astimezone().tzinfo or timezone.utc
+    if isinstance(tz_name, tzinfo):
+        return tz_name
+    cleaned = tz_name.strip()
+    if cleaned.upper() == "UTC":
+        return timezone.utc
+    try:
+        return ZoneInfo(cleaned)
+    except Exception:
+        raise ValueError(
+            f"Invalid timezone: {tz_name!r}. Please specify a valid IANA timezone name (e.g. 'Europe/Zurich', 'UTC') or 'local'."
+        )
 
 
 DEFAULT_APP_DIR = Path.home() / ".todoist-trace"
