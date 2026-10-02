@@ -367,3 +367,16 @@ class TestCLIAndSettings:
         settings = resolve_settings(args)
         assert settings["format"] == "markdown"
         assert settings["output"] == "todoist_trace_export.md"
+
+    def test_default_cache_path_in_dotdir(self):
+        args = parse_args([])
+        settings = resolve_settings(args)
+        assert ".todoist-trace/cache.json" in settings["cache_file"]
+
+    def test_cache_save_creates_parent_directory(self, tmp_path):
+        nested_cache_file = tmp_path / "new_dir" / "sub" / "cache.json"
+        cache = TraceCache(cache_file=str(nested_cache_file), enabled=True)
+        cache.projects = [{"id": "p1"}]
+        cache.save()
+        assert nested_cache_file.is_file()
+

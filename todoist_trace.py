@@ -15,6 +15,11 @@ from typing import Any, Dict, List, Optional
 import requests
 
 
+DEFAULT_APP_DIR = Path.home() / ".todoist-trace"
+DEFAULT_CONFIG_PATH = DEFAULT_APP_DIR / "config.json"
+DEFAULT_CACHE_PATH = DEFAULT_APP_DIR / "cache.json"
+
+
 def load_env_file(path: Path) -> Dict[str, str]:
     """Parse a simple .env file into a key-value dictionary."""
     data: Dict[str, str] = {}
@@ -42,17 +47,19 @@ def load_config(custom_path: Optional[str] = None) -> Dict[str, Any]:
     Load configuration from candidate files in order of precedence:
     1. Explicit custom path (--config)
     2. Local directory (config.json or .env)
-    3. User config directory (~/.config/todoist-trace/config.json)
+    3. User home dotdir (~/.todoist-trace/config.json)
+    4. User XDG config directory (~/.config/todoist-trace/config.json)
     """
     config: Dict[str, Any] = {}
 
-    candidates = []
+    candidates: List[Path] = []
     if custom_path:
-        candidates.append(Path(custom_path))
+        candidates.append(Path(custom_path).expanduser())
     else:
         candidates.extend([
             Path("config.json"),
             Path(".env"),
+            DEFAULT_CONFIG_PATH,
             Path.home() / ".config" / "todoist-trace" / "config.json",
         ])
 
@@ -147,7 +154,7 @@ def parse_args(argv: Optional[list] = None) -> argparse.Namespace:
         "--cache-file",
         type=str,
         default=None,
-        help="Path to local cache file (default: .todoist_cache.json)",
+        help="Path to local cache file (default: ~/.todoist-trace/cache.json)",
     )
     parser.add_argument(
         "--no-cache",
@@ -199,7 +206,13 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
 
     # 7. Cache settings
     cache_enabled = not args.no_cache and file_cfg.get("cache_enabled", True)
-    cache_file = args.cache_file or file_cfg.get("cache_file") or ".todoist_cache.json"
+    raw_cache = args.cache_file or file_cfg.get("cache_file")
+    if raw_cache:
+        cache_file = str(Path(raw_cache).expanduser())
+    elif Path(".todoist_cache.json").is_file():
+        cache_file = ".todoist_cache.json"
+    else:
+        cache_file = str(DEFAULT_CACHE_PATH)
     refresh = args.refresh
 
     return {
@@ -343,7 +356,8 @@ class TraceCache:
 
     def __init__(self, cache_file: Optional[str] = None, enabled: bool = True):
         self.enabled = enabled
-        self.path = Path(cache_file or ".todoist_cache.json")
+        raw_path = cache_file or str(DEFAULT_CACHE_PATH)
+        self.path = Path(raw_path).expanduser()
         self.projects: List[Dict[str, Any]] = []
         self.tasks: Dict[str, Dict[str, Any]] = {}
         self.events: Dict[str, Dict[str, Any]] = {}
@@ -368,6 +382,7 @@ class TraceCache:
         if not self.enabled:
             return
         try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
             temp_path = self.path.with_suffix(".tmp")
             data = {
                 "last_sync": datetime.now(timezone.utc).isoformat(),
