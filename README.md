@@ -59,6 +59,7 @@ todoist-trace/
 ├── todoist_trace.py            # Root CLI launcher script (backward compatible)
 ├── pytest.ini                  # Pytest configuration
 ├── AGENTS.md                   # Repository conventions and guidelines
+├── LICENSE                     # MIT License
 └── README.md                   # Project documentation
 ```
 
@@ -322,4 +323,4 @@ pytest -v tests/test_exporters.py
 
 ## License
 
-MIT
+MIT License - see [LICENSE](LICENSE) for details.
