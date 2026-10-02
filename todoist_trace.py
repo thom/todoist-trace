@@ -310,6 +310,165 @@ class ProjectTreeResolver:
         return res
 
 
+class TaskHierarchyResolver:
+    """
+    Resolves multi-level task parent-child hierarchies from completed activity events.
+    Traces parent tasks upward to build full relative task paths.
+    """
+
+    def __init__(self, token: str, preloaded_tasks: Optional[Dict[str, Dict[str, Any]]] = None):
+        self.token = token
+        self.headers = {"Authorization": f"Bearer {token}"}
+        self.task_cache: Dict[str, Dict[str, Any]] = preloaded_tasks or {}
+
+    def lookup_task(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """Lookup task content and parent_id, caching results."""
+        tid = str(task_id)
+        if tid in self.task_cache:
+            return self.task_cache[tid]
+
+        url = f"https://api.todoist.com/api/v1/tasks/{tid}"
+        try:
+            resp = requests.get(url, headers=self.headers, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                task_info = {
+                    "content": data.get("content", f"[Task {tid}]"),
+                    "parent_id": str(data["parent_id"]) if data.get("parent_id") else None,
+                }
+                self.task_cache[tid] = task_info
+                return task_info
+            elif resp.status_code == 404:
+                fallback = {"content": f"[Task {tid}]", "parent_id": None}
+                self.task_cache[tid] = fallback
+                return fallback
+        except requests.exceptions.RequestException:
+            pass
+
+        return None
+
+    def resolve(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Resolve an activity event into formatted task hierarchy data.
+        Returns:
+            {
+                "task_path": str,          # e.g. "Root / Subtask / Leaf"
+                "task_levels": List[str],  # e.g. ["Root", "Subtask", "Leaf"]
+                "parent_task_id": str,
+                "project_id": str,
+                "event_id": str,
+                "date": str,               # YYYY-MM-DD
+                "time": str,               # HH:MM:SS
+            }
+        """
+        extra = event.get("extra_data", {})
+        current_title = extra.get("content") or f"[Task {event.get('object_id', 'unknown')}]"
+        raw_parent_id = extra.get("parent_id") or event.get("parent_item_id")
+        parent_task_id = str(raw_parent_id) if raw_parent_id else ""
+
+        event_date_str = str(event.get("event_date", ""))
+        date_part = ""
+        time_part = ""
+        if "T" in event_date_str:
+            parts = event_date_str.split("T", 1)
+            date_part = parts[0]
+            time_part = parts[1].split(".")[0].rstrip("Z")
+        elif len(event_date_str) >= 10:
+            date_part = event_date_str[:10]
+
+        if not parent_task_id:
+            return {
+                "task_path": current_title,
+                "task_levels": [current_title],
+                "parent_task_id": "",
+                "project_id": str(event.get("parent_project_id", "")),
+                "event_id": str(event.get("id", "")),
+                "date": date_part,
+                "time": time_part,
+            }
+
+        ancestors: List[str] = []
+        curr_parent: Optional[str] = parent_task_id
+        visited = {str(event.get("object_id", ""))}
+
+        while curr_parent and curr_parent not in visited:
+            visited.add(curr_parent)
+            parent_info = self.lookup_task(curr_parent)
+            if parent_info:
+                ancestors.append(parent_info.get("content", f"[Task {curr_parent}]"))
+                curr_parent = parent_info.get("parent_id")
+            else:
+                ancestors.append(f"[Task {curr_parent}]")
+                break
+
+        ancestors.reverse()
+        full_levels = ancestors + [current_title]
+        task_path = " / ".join(full_levels)
+
+        return {
+            "task_path": task_path,
+            "task_levels": full_levels,
+            "parent_task_id": parent_task_id,
+            "project_id": str(event.get("parent_project_id", "")),
+            "event_id": str(event.get("id", "")),
+            "date": date_part,
+            "time": time_part,
+        }
+
+
+def fetch_completed_activities(
+    token: str,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    max_pages: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Fetch completed task activity records using strictly read-only HTTP GET.
+    Endpoint: https://api.todoist.com/api/v1/activities
+    """
+    url = "https://api.todoist.com/api/v1/activities"
+    headers = {
+        "Authorization": f"Bearer {token}",
+    }
+    events: List[Dict[str, Any]] = []
+    cursor: Optional[str] = None
+    page = 0
+
+    while True:
+        params: Dict[str, Any] = {
+            "object_type": "item",
+            "event_type": "completed",
+            "limit": 100,
+        }
+        if cursor:
+            params["cursor"] = cursor
+        if date_from:
+            params["date_from"] = date_from
+        if date_to:
+            params["date_to"] = date_to
+
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=15)
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Network error fetching activity logs: {e}") from e
+
+        if resp.status_code == 401:
+            raise ValueError("Invalid Todoist API token.")
+        if resp.status_code != 200:
+            raise RuntimeError(f"Todoist API returned HTTP {resp.status_code}: {resp.text}")
+
+        data = resp.json()
+        results = data.get("results", []) if isinstance(data, dict) else []
+        events.extend(results)
+
+        cursor = data.get("next_cursor") if isinstance(data, dict) else None
+        page += 1
+        if not cursor or (max_pages and page >= max_pages):
+            break
+
+    return events
+
+
 def main(argv: Optional[list] = None) -> int:
     """Main CLI entrypoint."""
     args = parse_args(argv)
@@ -337,19 +496,42 @@ def main(argv: Optional[list] = None) -> int:
     archived = [p for p in projects if p.get("is_archived", False)]
     print(f"Successfully authenticated! Retrieved {len(projects)} projects ({len(active)} active, {len(archived)} archived).")
 
-    resolver = ProjectTreeResolver(projects)
-    sub_projects = [p for p in projects if resolver.resolve(p.get("id"))["project_path"]]
+    project_resolver = ProjectTreeResolver(projects)
+    sub_projects = [p for p in projects if project_resolver.resolve(p.get("id"))["project_path"]]
     print(f"Project tree resolved: {len(projects) - len(sub_projects)} root projects, {len(sub_projects)} sub-projects.")
 
-    # Show a few sample resolved hierarchies
-    sample_sub = sub_projects[:3]
-    for sp in sample_sub:
-        res = resolver.resolve(sp.get("id"))
-        print(f"  • {res['top_level_project']} / {res['project_path']}")
+    print("Fetching completed activities (read-only)...")
+    try:
+        # For initial demonstration, fetch up to 1 page (100 events)
+        events = fetch_completed_activities(settings["token"], max_pages=1)
+    except (ValueError, RuntimeError) as e:
+        sys.stderr.write(f"Error: {e}\n")
+        return 1
+
+    print(f"Retrieved {len(events)} completed activity events.")
+
+    task_resolver = TaskHierarchyResolver(settings["token"])
+    subtask_events = []
+    for ev in events:
+        resolved_task = task_resolver.resolve(ev)
+        if resolved_task["parent_task_id"]:
+            subtask_events.append((ev, resolved_task))
+
+    print(f"Task hierarchy resolved: {len(events) - len(subtask_events)} top-level tasks, {len(subtask_events)} subtasks.")
+
+    # Show a few sample resolved subtasks
+    print("\nSample resolved task traces:")
+    for ev, t_res in subtask_events[:3]:
+        p_res = project_resolver.resolve(t_res["project_id"])
+        full_proj = f"{p_res['top_level_project']}" + (f" / {p_res['project_path']}" if p_res['project_path'] else "")
+        print(f"  [{t_res['date']} {t_res['time']}]")
+        print(f"    Project: {full_proj}")
+        print(f"    Task:    {t_res['task_path']}")
 
     return 0
 
 
 if __name__ == "__main__":
     sys.exit(main())
+
 
