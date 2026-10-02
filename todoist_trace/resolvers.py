@@ -4,7 +4,7 @@ Traces multi-level project trees and recursive parent-child task structures.
 """
 
 from datetime import datetime, timezone, tzinfo
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import requests
 
 from .config import resolve_timezone
@@ -224,10 +224,12 @@ def build_trace_records(
     events: List[Dict[str, Any]],
     project_resolver: ProjectTreeResolver,
     task_resolver: TaskHierarchyResolver,
+    progress_cb: Optional[Callable[[int, int], None]] = None,
 ) -> List[Dict[str, Any]]:
     """Combine activity events with project and task resolvers into unified trace records."""
     records: List[Dict[str, Any]] = []
-    for ev in events:
+    total = len(events)
+    for idx, ev in enumerate(events, 1):
         t_res = task_resolver.resolve(ev)
         p_res = project_resolver.resolve(t_res["project_id"])
         records.append({
@@ -242,4 +244,6 @@ def build_trace_records(
             "project_id": t_res["project_id"],
             "event_id": t_res["event_id"],
         })
+        if progress_cb and (idx % 20 == 0 or idx == total):
+            progress_cb(idx, total)
     return records

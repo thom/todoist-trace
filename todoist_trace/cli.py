@@ -94,6 +94,18 @@ def parse_args(argv: Optional[list] = None) -> argparse.Namespace:
         default=False,
         help="Force re-fetching all data from the API and refresh cache",
     )
+    parser.add_argument(
+        "-q", "--quiet",
+        action="store_true",
+        default=False,
+        help="Suppress progress updates and non-error messages",
+    )
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        default=False,
+        help="Disable ANSI colors in terminal output",
+    )
     return parser.parse_args(argv)
 
 
@@ -152,6 +164,10 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
     raw_tz = args.timezone or os.environ.get("TODOIST_TRACE_TIMEZONE") or file_cfg.get("timezone") or "local"
     tz = resolve_timezone(raw_tz)
 
+    # 9. Terminal output & progress
+    quiet = bool(args.quiet or os.environ.get("TODOIST_TRACE_QUIET") or file_cfg.get("quiet", False))
+    no_color = bool(args.no_color or os.environ.get("NO_COLOR") or file_cfg.get("no_color", False))
+
     return {
         "token": token,
         "format": output_format,
@@ -166,4 +182,6 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         "refresh": refresh,
         "timezone": raw_tz,
         "tz": tz,
+        "quiet": quiet,
+        "no_color": no_color,
     }

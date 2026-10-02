@@ -33,6 +33,12 @@ from .exporters import (
 )
 from .filters import filter_records
 from .main import main
+from .progress import (
+    FancyProgressReporter,
+    format_duration,
+    render_progress_bar,
+    supports_color,
+)
 from .resolvers import (
     ProjectTreeResolver,
     TaskHierarchyResolver,
@@ -45,6 +51,7 @@ __all__ = [
     "DEFAULT_CACHE_PATH",
     "DEFAULT_CONFIG_PATH",
     "DEFAULT_JSON_CACHE_PATH",
+    "FancyProgressReporter",
     "ProjectTreeResolver",
     "SQLiteTraceCache",
     "TaskCacheDict",

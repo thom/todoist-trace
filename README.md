@@ -171,6 +171,8 @@ python3 todoist_trace.py --no-cache -f markdown -o trace_live.md
 | `--cache-file` | | `~/.todoist-trace/cache.db` | Path to persistent SQLite cache database. |
 | `--no-cache` | | `False` | Disable local cache reading and persistence. |
 | `--refresh` | | `False` | Force re-fetching all projects and activities from API. |
+| `--quiet` | `-q` | `False` | Suppress progress updates and non-error output. |
+| `--no-color` | | `False` | Disable ANSI terminal color escape sequences. |
 
 ---
 

@@ -15,6 +15,7 @@ from .cache import (
 from .cli import parse_args, resolve_settings
 from .exporters import export_csv, export_markdown
 from .filters import filter_records
+from .progress import FancyProgressReporter
 from .resolvers import ProjectTreeResolver, TaskHierarchyResolver, build_trace_records
 
 
@@ -37,7 +38,32 @@ def main(argv: Optional[list] = None) -> int:
         )
         return 1
 
-    masked_token = settings["token"][:4] + "..." + settings["token"][-4:] if len(settings["token"]) > 8 else "***"
+    reporter = FancyProgressReporter(
+        quiet=settings.get("quiet", False),
+        no_color=settings.get("no_color", False),
+    )
+
+    # Render sleek terminal banner
+    date_range_desc = f"{settings['start_date'] or 'genesis'} to {settings['end_date'] or 'now'}"
+    if settings.get("start_date") and settings.get("end_date"):
+        try:
+            d1 = datetime.fromisoformat(settings["start_date"]).date()
+            d2 = datetime.fromisoformat(settings["end_date"]).date()
+            span_days = max(1, (d2 - d1).days + 1)
+            date_range_desc += f" ({span_days} days)"
+        except Exception:
+            pass
+
+    cache_mode = "SQLite" if settings.get("cache_file", "").endswith(".db") else "JSON"
+    cache_desc = f"{settings.get('cache_file')} ({cache_mode})" if settings.get("cache_enabled") else "Disabled"
+
+    reporter.print_banner(
+        date_range_desc=date_range_desc,
+        timezone_desc=str(settings.get("timezone", "local")),
+        category_desc=settings.get("category", "all"),
+        format_desc=f"{settings.get('format', 'csv').upper()} ({settings.get('markdown_style', 'nested')})",
+        cache_desc=cache_desc,
+    )
 
     # 1. Initialize Cache
     cache = create_cache(
@@ -47,12 +73,15 @@ def main(argv: Optional[list] = None) -> int:
 
     # 2. Fetch or load projects
     if cache.enabled and cache.projects and not settings.get("refresh"):
-        print(f"Using {len(cache.projects)} cached projects.")
+        reporter.start_projects(cached=True, count=len(cache.projects))
         projects = cache.projects
     else:
-        print(f"Connecting to Todoist API (token: {masked_token})...")
+        reporter.start_projects(cached=False)
         try:
-            projects = fetch_projects(settings["token"])
+            projects = fetch_projects(
+                settings["token"],
+                progress_cb=lambda active, archived: reporter.update_projects(active, archived),
+            )
             if cache.enabled:
                 cache.projects = projects
         except (ValueError, RuntimeError) as e:
@@ -61,7 +90,7 @@ def main(argv: Optional[list] = None) -> int:
 
         active = [p for p in projects if not p.get("is_archived", False) and not p.get("is_deleted", False)]
         archived = [p for p in projects if p.get("is_archived", False)]
-        print(f"Successfully authenticated! Retrieved {len(projects)} projects ({len(active)} active, {len(archived)} archived).")
+        reporter.finish_projects(len(active), len(archived))
 
     project_resolver = ProjectTreeResolver(projects)
 
@@ -79,15 +108,17 @@ def main(argv: Optional[list] = None) -> int:
 
     new_events = []
     if not missing_ranges:
-        print(f"Requested date range is fully cached in SQLite ({cache.get_events_count()} events in cache). Zero API calls needed.")
+        reporter.start_sync(None, None, total_cache_count=cache.get_events_count(), fully_cached=True)
     else:
-        print("Fetching completed activities (read-only)...")
         for gap_start, gap_end in missing_ranges:
-            desc_from = gap_start[:10] if gap_start else "account creation"
-            desc_to = gap_end[:10] if gap_end else "present"
-            print(f"Syncing missing range: {desc_from} to {desc_to}...")
+            reporter.start_sync(gap_start, gap_end, total_cache_count=cache.get_events_count(), fully_cached=False)
             try:
-                fetched = fetch_completed_activities(settings["token"], date_from=gap_start, date_to=gap_end)
+                fetched = fetch_completed_activities(
+                    settings["token"],
+                    date_from=gap_start,
+                    date_to=gap_end,
+                    progress_cb=lambda count, oldest: reporter.update_sync(count, oldest),
+                )
                 new_events.extend(fetched)
                 if cache.enabled:
                     cache.merge_events(fetched)
@@ -98,7 +129,10 @@ def main(argv: Optional[list] = None) -> int:
                     effective_start = gap_start or (fetched[-1]["event_date"] if fetched else "1970-01-01T00:00:00Z")
                     if effective_start < effective_end:
                         cache.record_sync_range(effective_start, effective_end, is_genesis=is_genesis)
-                    print(f"Retrieved {len(fetched)} events for range ({cache.get_events_count()} total in cache).")
+                reporter.finish_sync(
+                    len(fetched),
+                    cache.get_events_count() if cache.enabled else len(new_events),
+                )
             except (ValueError, RuntimeError) as e:
                 sys.stderr.write(f"Error: {e}\n")
                 return 1
@@ -112,7 +146,14 @@ def main(argv: Optional[list] = None) -> int:
 
     # 4. Resolve tasks
     task_resolver = TaskHierarchyResolver(settings["token"], cache=cache if cache.enabled else None, tz=tz)
-    all_records = build_trace_records(all_events, project_resolver, task_resolver)
+    reporter.start_resolve(len(all_events))
+    all_records = build_trace_records(
+        all_events,
+        project_resolver,
+        task_resolver,
+        progress_cb=lambda cur, tot: reporter.update_resolve(cur, tot),
+    )
+    reporter.finish_resolve(len(all_records))
 
     # Save updated cache (including newly resolved tasks)
     if cache.enabled:
@@ -125,15 +166,6 @@ def main(argv: Optional[list] = None) -> int:
         start_date=settings["start_date"],
         end_date=settings["end_date"],
     )
-
-    print(f"Filters applied (Category: {settings['category']}, Start: {settings['start_date']}, End: {settings['end_date']}):")
-    print(f"  {len(filtered_records)} of {len(all_records)} records matched.")
-
-    # Show a few sample filtered records
-    print("\nSample matched records:")
-    for r in filtered_records[:3]:
-        full_proj = f"{r['top_level_project']}" + (f" / {r['project_path']}" if r['project_path'] else "")
-        print(f"  [{r['date']} {r['time']}] {full_proj} -> {r['task_path']}")
 
     # 6. Export records
     out_path = settings["output"]
@@ -148,7 +180,20 @@ def main(argv: Optional[list] = None) -> int:
             task_style=settings["task_style"],
         )
 
-    print(f"\nSuccessfully exported {len(filtered_records)} records to {out_path} ({out_fmt.upper()} format).")
+    reporter.finish_export(
+        output_path=out_path,
+        matched_count=len(filtered_records),
+        total_count=len(all_records),
+        out_fmt=out_fmt,
+        style_desc=settings["markdown_style"] if out_fmt != "csv" else "",
+    )
+
+    # Show a few sample filtered records (if not quiet)
+    if not settings.get("quiet") and filtered_records:
+        reporter.print_text("\nSample matched records:")
+        for r in filtered_records[:3]:
+            full_proj = f"{r['top_level_project']}" + (f" / {r['project_path']}" if r['project_path'] else "")
+            reporter.print_text(f"  [{r['date']} {r['time']}] {full_proj} -> {r['task_path']}")
 
     return 0
 
