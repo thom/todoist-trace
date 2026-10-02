@@ -469,6 +469,69 @@ def fetch_completed_activities(
     return events
 
 
+def build_trace_records(
+    events: List[Dict[str, Any]],
+    project_resolver: ProjectTreeResolver,
+    task_resolver: TaskHierarchyResolver,
+) -> List[Dict[str, Any]]:
+    """Combine activity events with project and task resolvers into unified trace records."""
+    records: List[Dict[str, Any]] = []
+    for ev in events:
+        t_res = task_resolver.resolve(ev)
+        p_res = project_resolver.resolve(t_res["project_id"])
+        records.append({
+            "top_level_project": p_res["top_level_project"],
+            "project_path": p_res["project_path"],
+            "project_levels": p_res["project_levels"],
+            "date": t_res["date"],
+            "time": t_res["time"],
+            "task_path": t_res["task_path"],
+            "task_levels": t_res["task_levels"],
+            "parent_task_id": t_res["parent_task_id"],
+            "project_id": t_res["project_id"],
+            "event_id": t_res["event_id"],
+        })
+    return records
+
+
+def filter_records(
+    records: List[Dict[str, Any]],
+    category: str = "all",
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Filter records by category and date range.
+    - category: 'work' (matches 'work' or 'work-areas'), 'personal' (matches 'personal' or 'personal-areas'), or 'all'
+    - start_date: 'YYYY-MM-DD' (inclusive)
+    - end_date: 'YYYY-MM-DD' (inclusive)
+    """
+    filtered = []
+    cat_lower = (category or "all").lower()
+
+    for r in records:
+        top_lower = r.get("top_level_project", "").lower()
+
+        # Category check
+        if cat_lower == "work":
+            if not (top_lower.startswith("work") or top_lower.startswith("work-areas")):
+                continue
+        elif cat_lower == "personal":
+            if not (top_lower.startswith("personal") or top_lower.startswith("personal-areas")):
+                continue
+
+        # Date range check
+        rec_date = r.get("date", "")
+        if start_date and rec_date < start_date:
+            continue
+        if end_date and rec_date > end_date:
+            continue
+
+        filtered.append(r)
+
+    return filtered
+
+
 def main(argv: Optional[list] = None) -> int:
     """Main CLI entrypoint."""
     args = parse_args(argv)
@@ -497,13 +560,12 @@ def main(argv: Optional[list] = None) -> int:
     print(f"Successfully authenticated! Retrieved {len(projects)} projects ({len(active)} active, {len(archived)} archived).")
 
     project_resolver = ProjectTreeResolver(projects)
-    sub_projects = [p for p in projects if project_resolver.resolve(p.get("id"))["project_path"]]
-    print(f"Project tree resolved: {len(projects) - len(sub_projects)} root projects, {len(sub_projects)} sub-projects.")
 
     print("Fetching completed activities (read-only)...")
     try:
-        # For initial demonstration, fetch up to 1 page (100 events)
-        events = fetch_completed_activities(settings["token"], max_pages=1)
+        date_from = f"{settings['start_date']}T00:00:00Z" if settings.get("start_date") else None
+        date_to = f"{settings['end_date']}T23:59:59Z" if settings.get("end_date") else None
+        events = fetch_completed_activities(settings["token"], date_from=date_from, date_to=date_to)
     except (ValueError, RuntimeError) as e:
         sys.stderr.write(f"Error: {e}\n")
         return 1
@@ -511,27 +573,26 @@ def main(argv: Optional[list] = None) -> int:
     print(f"Retrieved {len(events)} completed activity events.")
 
     task_resolver = TaskHierarchyResolver(settings["token"])
-    subtask_events = []
-    for ev in events:
-        resolved_task = task_resolver.resolve(ev)
-        if resolved_task["parent_task_id"]:
-            subtask_events.append((ev, resolved_task))
+    all_records = build_trace_records(events, project_resolver, task_resolver)
 
-    print(f"Task hierarchy resolved: {len(events) - len(subtask_events)} top-level tasks, {len(subtask_events)} subtasks.")
+    filtered_records = filter_records(
+        all_records,
+        category=settings["category"],
+        start_date=settings["start_date"],
+        end_date=settings["end_date"],
+    )
 
-    # Show a few sample resolved subtasks
-    print("\nSample resolved task traces:")
-    for ev, t_res in subtask_events[:3]:
-        p_res = project_resolver.resolve(t_res["project_id"])
-        full_proj = f"{p_res['top_level_project']}" + (f" / {p_res['project_path']}" if p_res['project_path'] else "")
-        print(f"  [{t_res['date']} {t_res['time']}]")
-        print(f"    Project: {full_proj}")
-        print(f"    Task:    {t_res['task_path']}")
+    print(f"Filters applied (Category: {settings['category']}, Start: {settings['start_date']}, End: {settings['end_date']}):")
+    print(f"  {len(filtered_records)} of {len(all_records)} records matched.")
+
+    print("\nSample matched records:")
+    for r in filtered_records[:3]:
+        full_proj = f"{r['top_level_project']}" + (f" / {r['project_path']}" if r['project_path'] else "")
+        print(f"  [{r['date']} {r['time']}] {full_proj} -> {r['task_path']}")
 
     return 0
 
 
 if __name__ == "__main__":
     sys.exit(main())
-
 
