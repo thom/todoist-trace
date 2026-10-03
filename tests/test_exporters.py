@@ -761,6 +761,48 @@ if (cardP4.includes("badge-p4") || cardP4.includes("P4")) {
         assert "t.priority && t.priority.toLowerCase() !== 'p4'" in html_out
         assert "r.priority && r.priority.toLowerCase() !== 'p4'" in html_out
 
+    def test_generate_html_date_picker_and_day_toggle(self):
+        """Verify presence of date period picker, quick presets, and day expand/collapse toggle."""
+        from todoist_trace.exporters import generate_html
+
+        records = [
+            {
+                "top_level_project": "platform",
+                "project_path": "services",
+                "date": "2026-09-28",
+                "time": "09:00:00",
+                "task_path": "Implement Service Layer",
+                "task_levels": ["Implement Service Layer"],
+            },
+            {
+                "top_level_project": "platform",
+                "project_path": "services",
+                "date": "2026-10-02",
+                "time": "14:00:00",
+                "task_path": "Deploy Service Layer",
+                "task_levels": ["Deploy Service Layer"],
+            },
+        ]
+
+        html_out = generate_html(records, title="Controls Test")
+
+        # Date range picker inputs
+        assert 'id="date-from"' in html_out
+        assert 'id="date-to"' in html_out
+        assert 'id="btn-clear-date"' in html_out
+        assert 'id="date-presets"' in html_out
+        assert "setDatePreset" in html_out
+        assert "clearDateRange" in html_out
+        assert "onDateRangeChange" in html_out
+        assert "initDatePickers" in html_out
+
+        # Day expand / collapse toggle controls
+        assert "toggleAllDays" in html_out
+        assert "updateDayToggleButton" in html_out
+        assert "btn-toggle-accordions" in html_out
+        assert "Collapse All Days" in html_out
+
+
 
 
 

@@ -412,6 +412,114 @@ def generate_html(
       color: #ffffff;
     }}
 
+    /* Date Range Filter Row */
+    .date-filter-row {{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding-top: 2px;
+    }}
+
+    .date-picker-group {{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }}
+
+    .date-picker-icon {{
+      font-size: 14px;
+      color: var(--text-dim);
+    }}
+
+    .date-label {{
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      user-select: none;
+    }}
+
+    .date-inputs-wrap {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background-color: var(--bg-card-subtle);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 3px 8px;
+    }}
+
+    .filter-date-input {{
+      padding: 4px 6px;
+      font-size: 12px;
+      font-family: inherit;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background-color: var(--bg-card);
+      color: var(--text);
+      outline: none;
+      cursor: pointer;
+      color-scheme: dark;
+    }}
+
+    :root[data-theme="light"] .filter-date-input {{
+      color-scheme: light;
+      background-color: #ffffff;
+    }}
+
+    .filter-date-input:focus {{
+      border-color: var(--accent);
+    }}
+
+    .date-sep {{
+      font-size: 12px;
+      color: var(--text-dim);
+      font-weight: 500;
+      user-select: none;
+    }}
+
+    .btn-clear-date {{
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      font-size: 13px;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: all 0.15s ease;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }}
+
+    .btn-clear-date:hover {{
+      color: var(--text);
+      background-color: var(--bg-hover);
+    }}
+
+    .btn-toggle-days {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background-color: var(--bg-card-subtle);
+      color: var(--text);
+      transition: all 0.15s ease;
+      user-select: none;
+    }}
+
+    .btn-toggle-days:hover {{
+      background-color: var(--bg-hover);
+      border-color: var(--accent);
+      color: var(--accent);
+    }}
+
     /* View Switcher Tabs */
     .view-switcher {{
       display: inline-flex;
@@ -1058,10 +1166,33 @@ def generate_html(
         <button class="btn" onclick="resetFilters()">Reset Filters</button>
       </div>
 
+      <div class="filter-row date-filter-row">
+        <div class="date-picker-group">
+          <span class="date-picker-icon">📅</span>
+          <span class="date-label">Period:</span>
+          <div class="date-inputs-wrap">
+            <input type="date" id="date-from" class="filter-date-input" title="Start date (from)" onchange="onDateRangeChange()">
+            <span class="date-sep">to</span>
+            <input type="date" id="date-to" class="filter-date-input" title="End date (to)" onchange="onDateRangeChange()">
+            <button type="button" class="btn-clear-date" id="btn-clear-date" onclick="clearDateRange()" title="Clear date range">✕</button>
+          </div>
+        </div>
+        <div class="filter-pills" id="date-presets">
+          <span class="pill active" data-preset="all" onclick="setDatePreset('all')">All Time</span>
+          <span class="pill" data-preset="7d" onclick="setDatePreset('7d')">Last 7d</span>
+          <span class="pill" data-preset="30d" onclick="setDatePreset('30d')">Last 30d</span>
+          <span class="pill" data-preset="90d" onclick="setDatePreset('90d')">Last 90d</span>
+          <span class="pill" data-preset="month" onclick="setDatePreset('month')">This Month</span>
+        </div>
+      </div>
+
       <div class="filter-status">
         <span id="filter-counter">Showing {total_records} of {total_records} tasks</span>
         <div style="display: flex; align-items: center; gap: 8px;">
-          <button class="btn btn-sm" id="btn-toggle-accordions" onclick="toggleAllAccordions()">Collapse All</button>
+          <button class="btn-toggle-days" id="btn-toggle-accordions" onclick="toggleAllDays()" title="Toggle expand or collapse for all displayed days">
+            <span id="toggle-days-icon" style="font-size: 13px;">⊟</span>
+            <span id="toggle-days-text">Collapse All Days</span>
+          </button>
         </div>
       </div>
     </div>
@@ -1122,6 +1253,7 @@ def generate_html(
     let currentSortColumn = 'date';
     let currentSortAsc = false;
     let activeDayFilter = null;
+    let isAllDaysCollapsed = false;
 
     // Theme Management
     function initTheme() {{
@@ -1144,29 +1276,52 @@ def generate_html(
       setTheme(current === 'dark' ? 'light' : 'dark');
     }}
 
-    // Accordion Management (Expand All / Collapse All)
-    function toggleAllAccordions() {{
-      const groups = document.querySelectorAll('.view-section.active .day-group');
+    // Toggle expand or collapse all displayed days / groups
+    function toggleAllDays() {{
+      const activeSection = document.querySelector('.view-section.active');
+      if (!activeSection) return;
+      const groups = activeSection.querySelectorAll('.day-group');
       if (!groups.length) return;
+
       const hasExpanded = Array.from(groups).some(g => !g.classList.contains('collapsed'));
       const shouldCollapse = hasExpanded;
+      isAllDaysCollapsed = shouldCollapse;
+
       groups.forEach(g => {{
         g.classList.toggle('collapsed', shouldCollapse);
       }});
-      updateAccordionButton();
+
+      updateDayToggleButton();
     }}
 
-    function updateAccordionButton() {{
-      const btn = document.getElementById('btn-toggle-accordions');
+    function toggleAllAccordions() {{
+      toggleAllDays();
+    }}
+
+    function updateDayToggleButton() {{
+      const btn = document.getElementById('btn-toggle-accordions') || document.getElementById('btn-toggle-days');
       if (!btn) return;
-      const groups = document.querySelectorAll('.view-section.active .day-group');
+      const activeSection = document.querySelector('.view-section.active');
+      if (!activeSection || activeSection.id === 'view-table') {{
+        btn.style.display = 'none';
+        return;
+      }}
+      const groups = activeSection.querySelectorAll('.day-group');
       if (!groups.length) {{
         btn.style.display = 'none';
         return;
       }}
       btn.style.display = 'inline-flex';
+
       const hasExpanded = Array.from(groups).some(g => !g.classList.contains('collapsed'));
-      btn.textContent = hasExpanded ? 'Collapse All' : 'Expand All';
+      isAllDaysCollapsed = !hasExpanded;
+
+      const entity = activeSection.id === 'view-timeline' ? 'Days' : 'Projects';
+      const icon = document.getElementById('toggle-days-icon');
+      const text = document.getElementById('toggle-days-text');
+
+      if (icon) icon.textContent = hasExpanded ? '⊟' : '⊞';
+      if (text) text.textContent = hasExpanded ? `Collapse All ${{entity}}` : `Expand All ${{entity}}`;
     }}
 
     // View Switching
@@ -1177,7 +1332,104 @@ def generate_html(
       document.querySelectorAll('.view-section').forEach(s => {{
         s.classList.toggle('active', s.id === `view-${{viewName}}`);
       }});
-      updateAccordionButton();
+      updateDayToggleButton();
+    }}
+
+    // Date Range Helpers & Presets
+    function getRecordDateRange() {{
+      const dates = rawRecords.map(r => r.date).filter(Boolean).sort();
+      if (!dates.length) return {{ min: '', max: '' }};
+      return {{ min: dates[0], max: dates[dates.length - 1] }};
+    }}
+
+    function formatDateIso(d) {{
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${{year}}-${{month}}-${{day}}`;
+    }}
+
+    function getReferenceDate() {{
+      const bounds = getRecordDateRange();
+      const now = new Date();
+      if (!bounds.max) return now;
+      const maxDate = new Date(bounds.max + 'T23:59:59');
+      // If dataset is from >30 days ago, anchor presets to the dataset's max date
+      if ((now.getTime() - maxDate.getTime()) > (30 * 86400000)) {{
+        return maxDate;
+      }}
+      return now;
+    }}
+
+    function initDatePickers() {{
+      const bounds = getRecordDateRange();
+      const dateFrom = document.getElementById('date-from');
+      const dateTo = document.getElementById('date-to');
+      if (dateFrom && bounds.min) dateFrom.min = bounds.min;
+      if (dateFrom && bounds.max) dateFrom.max = bounds.max;
+      if (dateTo && bounds.min) dateTo.min = bounds.min;
+      if (dateTo && bounds.max) dateTo.max = bounds.max;
+    }}
+
+    function updatePresetPills(activePreset) {{
+      document.querySelectorAll('#date-presets .pill').forEach(p => {{
+        p.classList.toggle('active', p.getAttribute('data-preset') === activePreset);
+      }});
+    }}
+
+    function setDatePreset(preset) {{
+      const dateFrom = document.getElementById('date-from');
+      const dateTo = document.getElementById('date-to');
+      if (!dateFrom || !dateTo) return;
+
+      activeDayFilter = null;
+
+      if (preset === 'all') {{
+        dateFrom.value = '';
+        dateTo.value = '';
+      }} else if (preset === '7d') {{
+        const end = getReferenceDate();
+        const start = new Date(end);
+        start.setDate(start.getDate() - 6);
+        dateFrom.value = formatDateIso(start);
+        dateTo.value = formatDateIso(end);
+      }} else if (preset === '30d') {{
+        const end = getReferenceDate();
+        const start = new Date(end);
+        start.setDate(start.getDate() - 29);
+        dateFrom.value = formatDateIso(start);
+        dateTo.value = formatDateIso(end);
+      }} else if (preset === '90d') {{
+        const end = getReferenceDate();
+        const start = new Date(end);
+        start.setDate(start.getDate() - 89);
+        dateFrom.value = formatDateIso(start);
+        dateTo.value = formatDateIso(end);
+      }} else if (preset === 'month') {{
+        const end = getReferenceDate();
+        const start = new Date(end.getFullYear(), end.getMonth(), 1);
+        dateFrom.value = formatDateIso(start);
+        dateTo.value = formatDateIso(end);
+      }}
+
+      updatePresetPills(preset);
+      applyFilters();
+    }}
+
+    function onDateRangeChange() {{
+      activeDayFilter = null;
+      updatePresetPills(null);
+      applyFilters();
+    }}
+
+    function clearDateRange() {{
+      const dateFrom = document.getElementById('date-from');
+      const dateTo = document.getElementById('date-to');
+      if (dateFrom) dateFrom.value = '';
+      if (dateTo) dateTo.value = '';
+      activeDayFilter = null;
+      updatePresetPills('all');
+      applyFilters();
     }}
 
     // Filter Options Initialization
@@ -1199,6 +1451,8 @@ def generate_html(
       const proj = document.getElementById('project-filter').value;
       const prio = document.getElementById('priority-filter').value;
       const due = document.getElementById('due-filter').value;
+      const dateFrom = document.getElementById('date-from') ? document.getElementById('date-from').value : '';
+      const dateTo = document.getElementById('date-to') ? document.getElementById('date-to').value : '';
 
       filteredRecords = rawRecords.filter(r => {{
         if (cat !== 'all') {{
@@ -1218,6 +1472,11 @@ def generate_html(
         if (prio !== 'all' && (r.priority || '').toLowerCase() !== prio) return false;
         if (due !== 'all' && (r.due_status || '') !== due) return false;
         if (activeDayFilter && r.date !== activeDayFilter) return false;
+
+        // Date range filter
+        if (dateFrom && r.date && r.date < dateFrom) return false;
+        if (dateTo && r.date && r.date > dateTo) return false;
+        if ((dateFrom || dateTo) && !r.date) return false;
 
         if (query) {{
           const haystack = [
@@ -1242,7 +1501,15 @@ def generate_html(
 
       const counter = document.getElementById('filter-counter');
       if (counter) {{
-        counter.textContent = `Showing ${{filteredRecords.length.toLocaleString()}} of ${{rawRecords.length.toLocaleString()}} tasks${{activeDayFilter ? ` (Filtered to day ${{activeDayFilter}})` : ''}}`;
+        let periodStr = '';
+        if (dateFrom && dateTo) {{
+          periodStr = ` (${{dateFrom}} to ${{dateTo}})`;
+        }} else if (dateFrom) {{
+          periodStr = ` (from ${{dateFrom}})`;
+        }} else if (dateTo) {{
+          periodStr = ` (up to ${{dateTo}})`;
+        }}
+        counter.textContent = `Showing ${{filteredRecords.length.toLocaleString()}} of ${{rawRecords.length.toLocaleString()}} tasks${{periodStr}}${{activeDayFilter ? ` [Filtered to ${{activeDayFilter}}]` : ''}}`;
       }}
     }}
 
@@ -1256,6 +1523,11 @@ def generate_html(
       document.getElementById('project-filter').value = 'all';
       document.getElementById('priority-filter').value = 'all';
       document.getElementById('due-filter').value = 'all';
+      const dateFrom = document.getElementById('date-from');
+      const dateTo = document.getElementById('date-to');
+      if (dateFrom) dateFrom.value = '';
+      if (dateTo) dateTo.value = '';
+      updatePresetPills('all');
       activeDayFilter = null;
       applyFilters();
     }}
@@ -1327,8 +1599,9 @@ def generate_html(
 
       sortedDates.forEach(dateStr => {{
         const dayRecords = byDate[dateStr];
+        const collapsedCls = isAllDaysCollapsed ? ' collapsed' : '';
         html += `
-          <div class="day-group" data-date="${{dateStr}}">
+          <div class="day-group${{collapsedCls}}" data-date="${{dateStr}}">
             <div class="day-header" onclick="toggleDayAccordion(this)">
               <div class="day-title">
                 <span>${{dateStr}}</span>
@@ -1374,13 +1647,13 @@ def generate_html(
       }});
 
       container.innerHTML = html;
-      updateAccordionButton();
+      updateDayToggleButton();
     }}
 
     function toggleDayAccordion(el) {{
       const group = el.closest('.day-group');
       if (group) group.classList.toggle('collapsed');
-      updateAccordionButton();
+      updateDayToggleButton();
     }}
 
     // Hierarchical Task Tree Resolution
@@ -1667,7 +1940,7 @@ def generate_html(
 
       if (filteredRecords.length === 0) {{
         container.innerHTML = '<div class="empty-state">No matching tasks found.</div>';
-        updateAccordionButton();
+        updateDayToggleButton();
         return;
       }}
 
@@ -1688,9 +1961,10 @@ def generate_html(
       let html = '';
       for (const proj of sortedTopProjs) {{
         const tasks = byProject[proj];
+        const collapsedCls = isAllDaysCollapsed ? ' collapsed' : '';
 
         html += `
-          <div class="day-group">
+          <div class="day-group${{collapsedCls}}">
             <div class="day-header" onclick="toggleDayAccordion(this)">
               <div class="day-title">
                 <span class="top-project-icon" style="margin-right: 4px;">${{ICONS.layers}}</span>
@@ -1706,7 +1980,7 @@ def generate_html(
         `;
       }}
       container.innerHTML = html;
-      updateAccordionButton();
+      updateDayToggleButton();
     }}
 
     // Render Table View
@@ -1781,8 +2055,18 @@ def generate_html(
       const tooltip = document.getElementById('chart-tooltip');
       if (!svg) return;
 
+      const dateFrom = document.getElementById('date-from') ? document.getElementById('date-from').value : '';
+      const dateTo = document.getElementById('date-to') ? document.getElementById('date-to').value : '';
+
+      const chartPool = rawRecords.filter(r => {{
+        if (dateFrom && r.date && r.date < dateFrom) return false;
+        if (dateTo && r.date && r.date > dateTo) return false;
+        if ((dateFrom || dateTo) && !r.date) return false;
+        return true;
+      }});
+
       const dateCounts = {{}};
-      rawRecords.forEach(r => {{
+      chartPool.forEach(r => {{
         if (r.date) dateCounts[r.date] = (dateCounts[r.date] || 0) + 1;
       }});
 
@@ -2009,6 +2293,7 @@ def generate_html(
     window.addEventListener('DOMContentLoaded', () => {{
       initTheme();
       initFilterDropdowns();
+      initDatePickers();
       applyFilters();
     }});
 
