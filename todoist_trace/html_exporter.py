@@ -1421,7 +1421,7 @@ def generate_html(
 
     function renderTaskItemCard(title, t, isSubtask = false) {{
       let prioBadge = '';
-      if (t.priority) {{
+      if (t.priority && t.priority.toLowerCase() !== 'p4') {{
         prioBadge = `<span class="badge badge-${{t.priority.toLowerCase()}}">${{t.priority.toUpperCase()}}</span>`;
       }}
 
@@ -1781,7 +1781,7 @@ def generate_html(
               ${{taskCellContent}}
               ${{r.description ? `<div style="font-size:11px; color:var(--text-muted); margin-top:3px;">${{renderMarkdown(r.description)}}</div>` : ''}}
             </td>
-            <td>${{r.priority ? `<span class="badge badge-${{r.priority.toLowerCase()}}">${{r.priority.toUpperCase()}}</span>` : '-'}}</td>
+            <td>${{r.priority && r.priority.toLowerCase() !== 'p4' ? `<span class="badge badge-${{r.priority.toLowerCase()}}">${{r.priority.toUpperCase()}}</span>` : '-'}}</td>
             <td>${{escapeHtml(tags || '-')}}</td>
             <td>${{r.due_status && r.due_status !== 'undated' ? `<span class="badge badge-${{r.due_status}}">${{escapeHtml(r.due_variance || r.due_date)}}</span>` : '-'}}</td>
           </tr>

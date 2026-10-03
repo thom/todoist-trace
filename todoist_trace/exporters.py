@@ -105,8 +105,8 @@ def _format_task_metadata(
     parts = []
     if include_priorities:
         prio = r.get("priority")
-        if prio:
-            parts.append(f"[{prio}]")
+        if prio and prio.lower() != "p4":
+            parts.append(f"[{prio.lower()}]")
     if include_labels:
         lbls = r.get("labels") or []
         if lbls:

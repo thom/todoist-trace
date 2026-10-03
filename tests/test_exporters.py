@@ -680,6 +680,16 @@ const xssOut = renderMarkdown("[click](javascript:alert(1))", true);
 if (xssOut.includes("javascript:")) {
   throw new Error("XSS unsafe scheme not blocked: " + xssOut);
 }
+
+const cardP1 = renderTaskItemCard("Task Alpha", { priority: "p1" });
+if (!cardP1.includes("badge-p1") || !cardP1.includes("P1")) {
+  throw new Error("P1 badge rendering failed: " + cardP1);
+}
+
+const cardP4 = renderTaskItemCard("Task Beta", { priority: "p4" });
+if (cardP4.includes("badge-p4") || cardP4.includes("P4")) {
+  throw new Error("P4 badge should be suppressed: " + cardP4);
+}
 """
             )
             with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
@@ -733,6 +743,45 @@ if (xssOut.includes("javascript:")) {
         assert "📂" not in html_out
         assert "📁" not in html_out
         assert "▤" not in html_out
+
+    def test_priority_p4_suppression_in_markdown_and_html(self):
+        """Verify default p4 priority is suppressed in visual output while p1-p3 are rendered."""
+        from todoist_trace.exporters import generate_markdown, generate_html
+
+        records = [
+            {
+                "top_level_project": "operations",
+                "project_path": "infra",
+                "project_levels": ["infra"],
+                "section": "Core",
+                "date": "2026-10-02",
+                "time": "10:00:00",
+                "task_path": "Task Alpha",
+                "task_levels": ["Task Alpha"],
+                "priority": "p1",
+            },
+            {
+                "top_level_project": "operations",
+                "project_path": "infra",
+                "project_levels": ["infra"],
+                "section": "Core",
+                "date": "2026-10-02",
+                "time": "10:05:00",
+                "task_path": "Task Beta",
+                "task_levels": ["Task Beta"],
+                "priority": "p4",
+            },
+        ]
+
+        # Markdown check
+        md_out = generate_markdown(records, include_priorities=True)
+        assert "[p1]" in md_out
+        assert "[p4]" not in md_out
+
+        # HTML template check
+        html_out = generate_html(records)
+        assert "t.priority && t.priority.toLowerCase() !== 'p4'" in html_out
+        assert "r.priority && r.priority.toLowerCase() !== 'p4'" in html_out
 
 
 

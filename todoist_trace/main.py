@@ -338,7 +338,7 @@ def run_export(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
             full_proj = f"{r['top_level_project']}" + (f" / {r['project_path']}" if r['project_path'] else "")
             sec_part = f" [{r['section']}]" if r.get('section') else ""
             extra_parts = []
-            if inc_prio and r.get("priority"):
+            if inc_prio and r.get("priority") and r.get("priority", "").lower() != "p4":
                 extra_parts.append(f"[{r['priority']}]")
             if inc_labels and r.get("labels"):
                 tags_str = ", ".join(f"@{l.lstrip('@')}" for l in r["labels"])
