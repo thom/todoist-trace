@@ -1067,13 +1067,6 @@ def generate_html(
               <button class="view-tab" id="tab-pstyle-collapsed" onclick="setProjectStyle('collapsed')">≡ Collapsed Path</button>
             </div>
           </div>
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <span style="font-size: 12px; color: var(--text-dim);">Tasks:</span>
-            <div class="view-switcher">
-              <button class="view-tab active" id="tab-style-nested" onclick="setTaskStyle('nested')">⊞ Nested Bullets</button>
-              <button class="view-tab" id="tab-style-flat" onclick="setTaskStyle('flat')">≡ Flat Path</button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -1171,29 +1164,6 @@ def generate_html(
       if (btnNested && btnCollapsed) {{
         btnNested.classList.toggle('active', style === 'nested');
         btnCollapsed.classList.toggle('active', style === 'collapsed');
-      }}
-      if (shouldReRender) {{
-        renderTimelineView();
-        renderProjectsView();
-        renderTableView();
-      }}
-    }}
-
-    // Task Style Management (Nested Bullets vs Flat Path)
-    let currentTaskStyle = localStorage.getItem('todoist-trace-task-style') || 'nested';
-
-    function initTaskStyle() {{
-      setTaskStyle(currentTaskStyle, false);
-    }}
-
-    function setTaskStyle(style, shouldReRender = true) {{
-      currentTaskStyle = style;
-      localStorage.setItem('todoist-trace-task-style', style);
-      const btnNested = document.getElementById('tab-style-nested');
-      const btnFlat = document.getElementById('tab-style-flat');
-      if (btnNested && btnFlat) {{
-        btnNested.classList.toggle('active', style === 'nested');
-        btnFlat.classList.toggle('active', style === 'flat');
       }}
       if (shouldReRender) {{
         renderTimelineView();
@@ -1493,14 +1463,6 @@ def generate_html(
       `;
     }}
 
-    function renderFlatTaskItem(t) {{
-      return renderTaskItemCard(t.task_path || 'Unnamed Task', t, false);
-    }}
-
-    function renderTaskItem(t) {{
-      return renderFlatTaskItem(t);
-    }}
-
     function renderTaskTree(nodes, depth = 0) {{
       let html = '<div class="task-tree">';
       for (const node of Object.values(nodes)) {{
@@ -1596,12 +1558,8 @@ def generate_html(
 
       const hasSections = records.some(r => Boolean(r.section));
       if (!hasSections) {{
-        if (currentTaskStyle === 'nested') {{
-          const tree = buildTaskTree(records);
-          return renderTaskTree(tree, 0);
-        }} else {{
-          return records.map(renderFlatTaskItem).join('');
-        }}
+        const tree = buildTaskTree(records);
+        return renderTaskTree(tree, 0);
       }}
 
       // Group by section: empty/unsectioned first
@@ -1614,12 +1572,8 @@ def generate_html(
 
       let html = '';
       if (sectionMap['']) {{
-        if (currentTaskStyle === 'nested') {{
-          const tree = buildTaskTree(sectionMap['']);
-          html += renderTaskTree(tree, 0);
-        }} else {{
-          html += sectionMap[''].map(renderFlatTaskItem).join('');
-        }}
+        const tree = buildTaskTree(sectionMap['']);
+        html += renderTaskTree(tree, 0);
       }}
 
       for (const [sec, recs] of Object.entries(sectionMap)) {{
@@ -1633,7 +1587,7 @@ def generate_html(
               </div>
               <span class="section-count-badge">${{recs.length}} task${{recs.length === 1 ? '' : 's'}}</span>
             </div>
-            ${{currentTaskStyle === 'nested' ? renderTaskTree(buildTaskTree(recs), 0) : recs.map(renderFlatTaskItem).join('')}}
+            ${{renderTaskTree(buildTaskTree(recs), 0)}}
           </div>
         `;
       }}
@@ -1803,7 +1757,7 @@ def generate_html(
         const tags = (r.labels || []).map(l => `@${{l.replace(/^@/, '')}}`).join(', ');
 
         let taskCellContent = '';
-        if (currentTaskStyle === 'nested' && r.task_levels && r.task_levels.length > 1) {{
+        if (r.task_levels && r.task_levels.length > 1) {{
           const ancestors = r.task_levels.slice(0, -1).map(l => renderMarkdown(l, true)).join(' › ');
           const leaf = renderMarkdown(r.task_levels[r.task_levels.length - 1], true);
           taskCellContent = `
@@ -2081,7 +2035,6 @@ def generate_html(
     window.addEventListener('DOMContentLoaded', () => {{
       initTheme();
       initProjectStyle();
-      initTaskStyle();
       initFilterDropdowns();
       applyFilters();
     }});

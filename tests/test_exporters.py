@@ -461,8 +461,9 @@ class TestExporters:
         assert "timeline-chart" in html_out
         assert "project-bars" in html_out
         assert "table-body" in html_out
-        assert "tab-style-nested" in html_out
-        assert "tab-style-flat" in html_out
+        assert "tab-pstyle-nested" in html_out
+        assert "tab-pstyle-collapsed" in html_out
+        assert "tab-style-flat" not in html_out
         assert "buildTaskTree" in html_out
         assert "renderTaskTree" in html_out
         assert ".task-tree" in html_out
@@ -492,7 +493,8 @@ class TestExporters:
         assert "Performance Metrics" in html_out
         assert "Roadmap" in html_out
         assert "Core Architecture" in html_out
-        assert 'setTaskStyle' in html_out
+        assert 'buildTaskTree' in html_out
+        assert 'renderTaskTree' in html_out
 
     def test_generate_html_project_hierarchy_support(self):
         from todoist_trace.exporters import generate_html
