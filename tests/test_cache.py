@@ -649,5 +649,166 @@ class TestCacheEdgeCases:
         cache.close()
 
 
+class TestMaterializedResolvedActivities:
+    """Test suite for Option 1: Materialized resolved_activities in cache."""
+
+    def test_sqlite_materialized_activities_schema_and_upsert(self, tmp_path):
+        db_file = tmp_path / "resolved_schema_test.db"
+        cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+
+        # Check table and index existence in sqlite_master
+        cur = cache.conn.cursor()
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='resolved_activities'")
+        assert cur.fetchone() is not None
+
+        cur.execute("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_resolved_date'")
+        assert cur.fetchone() is not None
+
+        # Insert 2 resolved activities
+        rec1 = {
+            "event_id": "ev_1",
+            "event_date": "2026-10-02T10:00:00Z",
+            "date": "2026-10-02",
+            "time": "10:00:00",
+            "top_level_project": "work",
+            "project_path": "core / engine",
+            "project_levels": ["core", "engine"],
+            "section": "Sprint 1",
+            "section_id": "sec_1",
+            "project_id": "p1",
+            "task_id": "t1",
+            "parent_task_id": "",
+            "task_path": "Implement Feature",
+            "task_levels": ["Implement Feature"],
+            "description": "Important feature note",
+            "priority": "p1",
+            "raw_priority": 4,
+            "labels": ["urgent", "backend"],
+            "due_date": "2026-10-02",
+            "due_variance": "on time",
+            "due_status": "on_time",
+            "was_overdue": False,
+        }
+        rec2 = {
+            "event_id": "ev_2",
+            "event_date": "2026-10-01T15:30:00Z",
+            "date": "2026-10-01",
+            "time": "15:30:00",
+            "top_level_project": "personal",
+            "project_path": "health / workout",
+            "project_levels": ["health", "workout"],
+            "section": "",
+            "section_id": "",
+            "project_id": "p2",
+            "task_id": "t2",
+            "parent_task_id": "",
+            "task_path": "Evening Run",
+            "task_levels": ["Evening Run"],
+            "description": "",
+            "priority": "p4",
+            "raw_priority": 1,
+            "labels": ["fitness"],
+            "due_date": "",
+            "due_variance": "undated",
+            "due_status": "undated",
+            "was_overdue": False,
+        }
+        cache.save_resolved_activities([rec1, rec2])
+        assert cache.get_resolved_activities_count() == 2
+
+        # Upsert rec1 with updated title/path
+        rec1_updated = dict(rec1)
+        rec1_updated["task_path"] = "Implement Feature (v2)"
+        cache.save_resolved_activities([rec1_updated])
+        assert cache.get_resolved_activities_count() == 2
+
+        loaded = cache.get_resolved_activities()
+        assert len(loaded) == 2
+        assert loaded[0]["event_id"] == "ev_1"
+        assert loaded[0]["task_path"] == "Implement Feature (v2)"
+        cache.close()
+
+    def test_sqlite_filter_pushdown_category(self, tmp_path):
+        db_file = tmp_path / "resolved_filter_cat.db"
+        cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+
+        recs = [
+            {"event_id": "e1", "date": "2026-10-01", "top_level_project": "work", "task_path": "W1"},
+            {"event_id": "e2", "date": "2026-10-01", "top_level_project": "work-areas", "task_path": "W2"},
+            {"event_id": "e3", "date": "2026-10-01", "top_level_project": "personal", "task_path": "P1"},
+            {"event_id": "e4", "date": "2026-10-01", "top_level_project": "personal-areas", "task_path": "P2"},
+            {"event_id": "e5", "date": "2026-10-01", "top_level_project": "archive", "task_path": "A1"},
+        ]
+        cache.save_resolved_activities(recs)
+
+        work_only = cache.get_resolved_activities(category="work")
+        assert len(work_only) == 2
+        assert {r["event_id"] for r in work_only} == {"e1", "e2"}
+
+        personal_only = cache.get_resolved_activities(category="personal")
+        assert len(personal_only) == 2
+        assert {r["event_id"] for r in personal_only} == {"e3", "e4"}
+
+        all_cats = cache.get_resolved_activities(category="all")
+        assert len(all_cats) == 5
+        cache.close()
+
+    def test_sqlite_filter_pushdown_date_and_attributes(self, tmp_path):
+        db_file = tmp_path / "resolved_filter_dates.db"
+        cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+
+        recs = [
+            {"event_id": "e1", "date": "2026-09-01", "top_level_project": "work", "priority": "p1", "due_status": "on_time"},
+            {"event_id": "e2", "date": "2026-09-15", "top_level_project": "work", "priority": "p2", "due_status": "overdue"},
+            {"event_id": "e3", "date": "2026-10-01", "top_level_project": "work", "priority": "p1", "due_status": "overdue"},
+        ]
+        cache.save_resolved_activities(recs)
+
+        # Date range
+        mid = cache.get_resolved_activities(start_date="2026-09-10", end_date="2026-09-20")
+        assert len(mid) == 1
+        assert mid[0]["event_id"] == "e2"
+
+        # Inverted date range
+        assert cache.get_resolved_activities(start_date="2026-10-05", end_date="2026-09-01") == []
+
+        # Priority filter
+        p1s = cache.get_resolved_activities(priority="p1")
+        assert len(p1s) == 2
+        assert {r["event_id"] for r in p1s} == {"e1", "e3"}
+
+        # Due status filter
+        overdues = cache.get_resolved_activities(due_status="overdue")
+        assert len(overdues) == 2
+        assert {r["event_id"] for r in overdues} == {"e2", "e3"}
+
+        # Clear
+        cache.clear_resolved_activities()
+        assert cache.get_resolved_activities_count() == 0
+        cache.close()
+
+    def test_json_trace_cache_resolved_activities(self, tmp_path):
+        json_file = tmp_path / "json_resolved.json"
+        cache = TraceCache(cache_file=str(json_file), enabled=True)
+
+        recs = [
+            {"event_id": "j1", "date": "2026-09-10", "top_level_project": "work", "priority": "p1"},
+            {"event_id": "j2", "date": "2026-09-20", "top_level_project": "personal", "priority": "p4"},
+        ]
+        cache.save_resolved_activities(recs)
+        cache.save()
+        assert cache.get_resolved_activities_count() == 2
+
+        # Filter
+        assert len(cache.get_resolved_activities(category="work")) == 1
+        assert len(cache.get_resolved_activities(priority="p1")) == 1
+
+        # Reload
+        reloaded = TraceCache(cache_file=str(json_file), enabled=True)
+        assert reloaded.get_resolved_activities_count() == 2
+        assert reloaded.get_resolved_activities(category="personal")[0]["event_id"] == "j2"
+
+
+
 
 

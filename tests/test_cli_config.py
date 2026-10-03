@@ -356,6 +356,7 @@ class TestSubcommandsAndStages:
         reporter = FancyProgressReporter(quiet=True)
         ret = run_export(settings, reporter, cache)
         assert ret == 0
+        assert cache.get_resolved_activities_count() == 1
         assert out_html.is_file()
         text = out_html.read_text(encoding="utf-8")
         assert "Build Dashboard" in text

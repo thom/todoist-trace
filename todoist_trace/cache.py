@@ -166,6 +166,7 @@ class TraceCache:
         self.sections: Dict[str, Dict[str, Any]] = {}
         self.labels: Dict[str, Dict[str, Any]] = {}
         self.events: Dict[str, Dict[str, Any]] = {}
+        self.resolved_activities: List[Dict[str, Any]] = []
         self.sync_ranges: List[Dict[str, Any]] = []
         self.last_sync: Optional[str] = None
         if self.enabled:
@@ -182,6 +183,7 @@ class TraceCache:
                 self.sections = data.get("sections", {})
                 self.labels = data.get("labels", {})
                 self.events = data.get("events", {})
+                self.resolved_activities = data.get("resolved_activities", [])
                 self.sync_ranges = data.get("sync_ranges", [])
                 self.last_sync = data.get("last_sync")
         except Exception as e:
@@ -200,6 +202,7 @@ class TraceCache:
                 "sections": self.sections,
                 "labels": self.labels,
                 "events": self.events,
+                "resolved_activities": self.resolved_activities,
                 "sync_ranges": self.sync_ranges,
             }
             with open(temp_path, "w", encoding="utf-8") as f:
@@ -297,6 +300,42 @@ class TraceCache:
                 continue
             filtered.append(ev)
         return sorted(filtered, key=lambda x: str(x.get("event_date", "")), reverse=True)
+
+    def get_resolved_activities_count(self) -> int:
+        return len(self.resolved_activities)
+
+    def clear_resolved_activities(self) -> None:
+        self.resolved_activities = []
+
+    def save_resolved_activities(self, records: List[Dict[str, Any]]) -> None:
+        existing_map = {r["event_id"]: r for r in self.resolved_activities if "event_id" in r}
+        for r in records:
+            if "event_id" in r:
+                existing_map[r["event_id"]] = r
+            else:
+                existing_map[str(id(r))] = r
+        self.resolved_activities = sorted(
+            existing_map.values(),
+            key=lambda x: (str(x.get("event_date", "")), str(x.get("date", "")), str(x.get("time", ""))),
+            reverse=True,
+        )
+
+    def get_resolved_activities(
+        self,
+        category: str = "all",
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        priority: Optional[str] = None,
+        due_status: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        from .filters import filter_records
+        res = filter_records(self.resolved_activities, category=category, start_date=start_date, end_date=end_date)
+        if priority:
+            res = [r for r in res if r.get("priority") == priority]
+        if due_status:
+            res = [r for r in res if r.get("due_status") == due_status]
+        return res
+
 
 
 class TaskCacheDict(dict):
@@ -486,6 +525,38 @@ class SQLiteTraceCache:
                         value TEXT
                     )
                 """)
+                self.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS resolved_activities (
+                        event_id TEXT PRIMARY KEY,
+                        event_date TEXT NOT NULL,
+                        date TEXT NOT NULL,
+                        time TEXT,
+                        top_level_project TEXT NOT NULL,
+                        project_path TEXT DEFAULT '',
+                        project_levels TEXT DEFAULT '[]',
+                        section TEXT DEFAULT '',
+                        section_id TEXT DEFAULT '',
+                        project_id TEXT,
+                        task_id TEXT,
+                        parent_task_id TEXT,
+                        task_path TEXT NOT NULL,
+                        task_levels TEXT DEFAULT '[]',
+                        description TEXT DEFAULT '',
+                        priority TEXT DEFAULT 'p4',
+                        raw_priority INTEGER DEFAULT 1,
+                        labels TEXT DEFAULT '[]',
+                        due_date TEXT DEFAULT '',
+                        due_variance TEXT DEFAULT '',
+                        due_status TEXT DEFAULT 'undated',
+                        was_overdue INTEGER DEFAULT 0,
+                        payload TEXT
+                    )
+                """)
+                self.conn.execute("CREATE INDEX IF NOT EXISTS idx_resolved_date ON resolved_activities(date)")
+                self.conn.execute("CREATE INDEX IF NOT EXISTS idx_resolved_event_date ON resolved_activities(event_date)")
+                self.conn.execute("CREATE INDEX IF NOT EXISTS idx_resolved_top_project ON resolved_activities(top_level_project)")
+                self.conn.execute("CREATE INDEX IF NOT EXISTS idx_resolved_priority ON resolved_activities(priority)")
+                self.conn.execute("CREATE INDEX IF NOT EXISTS idx_resolved_due_status ON resolved_activities(due_status)")
         except Exception as e:
             sys.stderr.write(f"Warning: Could not open or initialize cache at {self.path}: {e}\n")
             self.conn = None
@@ -547,6 +618,9 @@ class SQLiteTraceCache:
                             self._tasks[tid] = tinfo
                     if json_events:
                         self.merge_events(json_events)
+                    json_resolved = data.get("resolved_activities", [])
+                    if json_resolved:
+                        self.save_resolved_activities(json_resolved)
 
                     print(f"Auto-migrated {len(json_events)} events, {len(json_tasks)} tasks, {len(json_sections)} sections, {len(json_labels)} labels, and {len(json_projects)} projects from {jpath.name} to SQLite cache.")
                     break
@@ -800,6 +874,114 @@ class SQLiteTraceCache:
         cur = self.conn.cursor()
         cur.execute("SELECT COUNT(*) FROM events")
         return cur.fetchone()[0]
+
+    def get_resolved_activities_count(self) -> int:
+        if not self.enabled or not self.conn:
+            return 0
+        cur = self.conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM resolved_activities")
+        return cur.fetchone()[0]
+
+    def clear_resolved_activities(self) -> None:
+        if not self.enabled or not self.conn:
+            return
+        with self.conn:
+            self.conn.execute("DELETE FROM resolved_activities")
+
+    def save_resolved_activities(self, records: List[Dict[str, Any]]) -> None:
+        if not self.enabled or not self.conn or not records:
+            return
+        rows = [
+            (
+                str(r.get("event_id", "")),
+                str(r.get("event_date", "")),
+                str(r.get("date", "")),
+                str(r.get("time", "")),
+                str(r.get("top_level_project", "")),
+                str(r.get("project_path", "")),
+                json.dumps(r.get("project_levels", [])),
+                str(r.get("section", "")),
+                str(r.get("section_id", "")),
+                str(r.get("project_id", "")),
+                str(r.get("task_id", "")),
+                str(r.get("parent_task_id", "")),
+                str(r.get("task_path", "")),
+                json.dumps(r.get("task_levels", [])),
+                str(r.get("description", "")),
+                str(r.get("priority", "p4")),
+                r.get("raw_priority") if r.get("raw_priority") is not None else 1,
+                json.dumps(r.get("labels", [])),
+                str(r.get("due_date", "")),
+                str(r.get("due_variance", "")),
+                str(r.get("due_status", "undated")),
+                1 if r.get("was_overdue") else 0,
+                json.dumps(r),
+            )
+            for r in records
+            if r.get("event_id")
+        ]
+        with self.conn:
+            self.conn.executemany(
+                """
+                INSERT OR REPLACE INTO resolved_activities (
+                    event_id, event_date, date, time, top_level_project, project_path,
+                    project_levels, section, section_id, project_id, task_id, parent_task_id,
+                    task_path, task_levels, description, priority, raw_priority, labels,
+                    due_date, due_variance, due_status, was_overdue, payload
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                rows,
+            )
+
+    def get_resolved_activities(
+        self,
+        category: str = "all",
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        priority: Optional[str] = None,
+        due_status: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        if not self.enabled or not self.conn:
+            return []
+        if start_date and end_date and start_date > end_date:
+            return []
+
+        where_clauses: List[str] = []
+        params: List[Any] = []
+
+        cat_lower = (category or "all").lower()
+        if cat_lower == "work":
+            where_clauses.append("(LOWER(top_level_project) LIKE 'work%' OR LOWER(top_level_project) LIKE 'work-areas%')")
+        elif cat_lower == "personal":
+            where_clauses.append("(LOWER(top_level_project) LIKE 'personal%' OR LOWER(top_level_project) LIKE 'personal-areas%')")
+
+        if start_date:
+            where_clauses.append("date >= ?")
+            params.append(start_date)
+        if end_date:
+            where_clauses.append("date <= ?")
+            params.append(end_date)
+        if priority:
+            where_clauses.append("priority = ?")
+            params.append(priority)
+        if due_status:
+            where_clauses.append("due_status = ?")
+            params.append(due_status)
+
+        query = "SELECT payload FROM resolved_activities"
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
+        query += " ORDER BY event_date DESC, date DESC, time DESC"
+
+        cur = self.conn.cursor()
+        cur.execute(query, params)
+        results = []
+        for row in cur.fetchall():
+            try:
+                results.append(json.loads(row[0]))
+            except Exception:
+                pass
+        return results
 
     def save(self) -> None:
         if not self.enabled or not self.conn:

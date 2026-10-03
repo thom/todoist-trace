@@ -474,12 +474,14 @@ class TaskHierarchyResolver:
 
         if not parent_task_id:
             return {
+                "task_id": obj_id,
                 "task_path": current_title,
                 "task_levels": [current_title],
                 "parent_task_id": "",
                 "project_id": str(event.get("parent_project_id", "")),
                 "section_id": section_id,
                 "event_id": str(event.get("id", "")),
+                "event_date": event_date_str,
                 "date": date_part,
                 "time": time_part,
                 "description": description or "",
@@ -511,12 +513,14 @@ class TaskHierarchyResolver:
         task_path = " / ".join(full_levels)
 
         return {
+            "task_id": obj_id,
             "task_path": task_path,
             "task_levels": full_levels,
             "parent_task_id": parent_task_id,
             "project_id": str(event.get("parent_project_id", "")),
             "section_id": section_id,
             "event_id": str(event.get("id", "")),
+            "event_date": event_date_str,
             "date": date_part,
             "time": time_part,
             "description": description or "",
@@ -549,6 +553,9 @@ def build_trace_records(
         resolved_labels = label_resolver.resolve_labels(raw_labels) if label_resolver else raw_labels
 
         records.append({
+            "event_id": t_res["event_id"],
+            "event_date": t_res.get("event_date", str(ev.get("event_date", ""))),
+            "task_id": t_res.get("task_id", str(ev.get("object_id", ""))),
             "top_level_project": p_res["top_level_project"],
             "project_path": p_res["project_path"],
             "project_levels": p_res["project_levels"],
@@ -560,7 +567,6 @@ def build_trace_records(
             "task_levels": t_res["task_levels"],
             "parent_task_id": t_res["parent_task_id"],
             "project_id": t_res["project_id"],
-            "event_id": t_res["event_id"],
             "description": t_res.get("description", ""),
             "priority": t_res.get("priority", "p4"),
             "raw_priority": t_res.get("raw_priority"),

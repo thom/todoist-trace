@@ -54,6 +54,8 @@ def run_status(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
     oldest_event, newest_event = cache.get_date_bounds()
     sync_ranges = cache.get_sync_ranges()
 
+    resolved_count = cache.get_resolved_activities_count()
+
     reporter.print_text(reporter.style.bold("\nTodoist Trace Cache Status"))
     reporter.print_text(reporter.style.dim("─" * 32))
     reporter.print_text(f"  Location:     {cache_path} ({cache_mode})")
@@ -67,9 +69,10 @@ def run_status(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
     reporter.print_text(f"  • Labels:     {labels_count}")
     reporter.print_text(f"  • Tasks:      {tasks_count}")
     if events_count > 0 and oldest_event and newest_event:
-        reporter.print_text(f"  • Activities: {events_count} ({oldest_event} → {newest_event})")
+        reporter.print_text(f"  • Activities: {events_count} raw ({oldest_event} → {newest_event})")
     else:
-        reporter.print_text(f"  • Activities: {events_count}")
+        reporter.print_text(f"  • Activities: {events_count} raw")
+    reporter.print_text(f"  • Resolved:   {resolved_count} materialized")
 
     reporter.print_text("")
     reporter.print_text(reporter.style.bold("Synchronized UTC Ranges:"))
@@ -186,6 +189,9 @@ def run_sync(settings: Dict[str, Any], reporter: FancyProgressReporter, cache: A
                 return 1
 
     # 5. Resolve task hierarchies for the synced events and commit to cache
+    if refresh and cache.enabled:
+        cache.clear_resolved_activities()
+
     if cache.enabled:
         cache.save()
         events_to_resolve = cache.get_events_in_range(req_start, req_end, tz=tz)
@@ -206,7 +212,7 @@ def run_sync(settings: Dict[str, Any], reporter: FancyProgressReporter, cache: A
     )
 
     reporter.start_resolve(len(events_to_resolve))
-    build_trace_records(
+    resolved_records = build_trace_records(
         events_to_resolve,
         project_resolver,
         task_resolver,
@@ -217,17 +223,19 @@ def run_sync(settings: Dict[str, Any], reporter: FancyProgressReporter, cache: A
     reporter.finish_resolve(len(events_to_resolve))
 
     if cache.enabled:
+        cache.save_resolved_activities(resolved_records)
         cache.save()
 
     reporter.print_text(
         f"\n{reporter.style.green('✔')} Sync complete. Cached: {cache.get_events_count()} events, "
-        f"{len(cache.tasks)} tasks, {len(cache.projects)} projects."
+        f"{len(cache.tasks)} tasks, {len(cache.projects)} projects, "
+        f"{cache.get_resolved_activities_count()} resolved activities."
     )
     return 0
 
 
 def run_export(settings: Dict[str, Any], reporter: FancyProgressReporter, cache: Any) -> int:
-    """Filter cached records and export to CSV or Markdown (offline-first)."""
+    """Filter cached records and export to CSV, Markdown, or HTML (offline-first)."""
     if not cache.enabled:
         sys.stderr.write("Error: Export requires local cache to be enabled.\n")
         return 1
@@ -239,42 +247,45 @@ def run_export(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
         )
         return 1
 
-    req_start = settings.get("start_date")
-    req_end = settings.get("end_date")
     tz = settings.get("tz")
-    events = cache.get_events_in_range(req_start, req_end, tz=tz)
 
-    project_resolver = ProjectTreeResolver(cache.projects)
-    section_resolver = SectionResolver(
-        token=settings.get("token"),
-        preloaded_sections=cache.sections,
-        cache=cache,
-    )
-    label_resolver = LabelResolver(preloaded_labels=cache.labels)
-    task_resolver = TaskHierarchyResolver(
-        token=settings.get("token"),
-        cache=cache,
-        tz=tz,
-    )
+    # Self-healing: materialize resolved activities if cache table is empty or missing events
+    if cache.get_resolved_activities_count() < cache.get_events_count():
+        reporter.print_text("Materializing resolved activities in cache for fast exports...")
+        all_events = cache.get_all_events()
+        project_resolver = ProjectTreeResolver(cache.projects)
+        section_resolver = SectionResolver(
+            token=settings.get("token"),
+            preloaded_sections=cache.sections,
+            cache=cache,
+        )
+        label_resolver = LabelResolver(preloaded_labels=cache.labels)
+        task_resolver = TaskHierarchyResolver(
+            token=settings.get("token"),
+            cache=cache,
+            tz=tz,
+        )
 
-    reporter.start_resolve(len(events))
-    all_records = build_trace_records(
-        events,
-        project_resolver,
-        task_resolver,
-        section_resolver=section_resolver,
-        label_resolver=label_resolver,
-        progress_cb=lambda cur, tot: reporter.update_resolve(cur, tot),
-    )
-    reporter.finish_resolve(len(all_records))
+        reporter.start_resolve(len(all_events))
+        resolved_records = build_trace_records(
+            all_events,
+            project_resolver,
+            task_resolver,
+            section_resolver=section_resolver,
+            label_resolver=label_resolver,
+            progress_cb=lambda cur, tot: reporter.update_resolve(cur, tot),
+        )
+        reporter.finish_resolve(len(all_events))
+        cache.save_resolved_activities(resolved_records)
+        cache.save()
 
-    # Apply category & date filters
-    filtered_records = filter_records(
-        all_records,
-        category=settings["category"],
-        start_date=settings["start_date"],
-        end_date=settings["end_date"],
+    # Fast indexed read directly from resolved_activities with SQL filter pushdown
+    filtered_records = cache.get_resolved_activities(
+        category=settings.get("category", "all"),
+        start_date=settings.get("start_date"),
+        end_date=settings.get("end_date"),
     )
+    total_count = cache.get_resolved_activities_count()
 
     # Export records
     inc_labels = settings.get("include_labels", False)
@@ -317,7 +328,7 @@ def run_export(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
     reporter.finish_export(
         output_path=out_path,
         matched_count=len(filtered_records),
-        total_count=len(all_records),
+        total_count=total_count,
         out_fmt=out_fmt,
         style_desc=settings["markdown_style"] if out_fmt == "markdown" else "",
     )
