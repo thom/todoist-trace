@@ -132,99 +132,146 @@ TODOIST_TRACE_DUE_DATES=true
 
 ---
 
-## Usage
+## Usage & Git-Style Subcommands
 
-You can execute `todoist-trace` using any of the following entrypoints:
+`todoist-trace` supports a two-stage Git-style operation:
+1. **`sync`**: Pulls 100% of available metadata (projects, sections, labels, completed activities, task hierarchies, descriptions, priorities, due dates) from the Todoist API into a persistent local SQLite database (`~/.todoist-trace/cache.db`).
+2. **`export`**: Operates **100% offline** on the local SQLite cache to filter, slice, and generate Markdown or CSV reports instantaneously without hitting API rate limits.
+3. **`status`**: Shows cache statistics, entity counts, covered date ranges, and last sync timestamp.
+4. **`run`** (default): Runs `sync` followed immediately by `export` in a single pass (maintains seamless backward compatibility when invoked directly with options).
 
 ```bash
-# Via root launcher
-python3 todoist_trace.py [options]
+# General invocation syntax:
+todoist-trace <subcommand> [options]
 
-# Via Python module
-python3 -m todoist_trace [options]
+# Or via Python module / launcher script:
+python3 todoist_trace.py <subcommand> [options]
+python3 -m todoist_trace <subcommand> [options]
 ```
 
 ### Visual Terminal Progress
 
-When executing a sync, `todoist-trace` displays a real-time visual progress dashboard:
+When executing a sync or export, `todoist-trace` displays a real-time visual progress dashboard:
 
 ```text
 ╭─ todoist-trace ────────────────────────────────────────────────────────╮
-│ Range    : 2026-01-01 to 2026-10-02 (275 days)                         │
+│ Range    : 2026-07-01 to 2026-10-03 (95 days)                          │
 │ Timezone : Europe/Zurich                                              │
 │ Category : all                                                         │
 │ Format   : MARKDOWN (nested)                                           │
 │ Cache    : ~/.todoist-trace/cache.db (SQLite)                          │
 ╰────────────────────────────────────────────────────────────────────────╯
 
-[1/4] ✔ Projects: 62 active, 18 archived retrieved
-[2/4] ⠹ Syncing activities: 2026-01-01 → 2026-10-02 (275 days)
-      ⠸ [████████████████░░░░░░░░░░]  61.5% • Day 169/275 • 1,840 tasks • 142 tasks/s • ETA 00:03
-[3/4] ✔ Task hierarchies: 2,450 records resolved in 00:01
-[4/4] ✔ Export complete: todoist_trace_export.md (2,450 of 2,450 records matched, MARKDOWN (nested))
+[1/4] ✔ Projects: 48 active, 12 archived retrieved
+[2/4] ⠹ Syncing activities: 2026-07-01 → 2026-10-03 (95 days)
+      ⠸ [████████████████░░░░░░░░░░]  100.0% • Day 95/95 • 992 tasks • 142 tasks/s
+[3/4] ✔ Task hierarchies: 992 records resolved in 00:01
+[4/4] ✔ Export complete: todoist_trace_export.md (992 of 992 records matched, MARKDOWN (nested))
 ```
 
-### Common Commands
+### Subcommands & Common Commands
 
-#### 1. Export the Last 30 Days to Markdown
+#### 1. Synchronize Data (`sync`)
+Retrieves all metadata from the Todoist API and stores it in the local SQLite cache:
+
 ```bash
-python3 todoist_trace.py -f markdown -s 2026-09-02 -e 2026-10-02 -o my_trace.md
+# Sync activities from a specific date to today:
+python3 todoist_trace.py sync -s 2026-07-01
+
+# Sync a specific date range:
+python3 todoist_trace.py sync -s 2026-07-01 -e 2026-09-30
+
+# Force re-fetching all data and refresh cache:
+python3 todoist_trace.py sync --refresh
 ```
 
-#### 2. Export Work Projects to CSV
+#### 2. Export Offline from Cache (`export`)
+Runs offline directly from your local SQLite cache. Slices by category, date range, or format without needing network access or an API token:
+
 ```bash
-python3 todoist_trace.py -c work -f csv -o work_activities.csv
+# Export the last 30 days to Markdown with all extended metadata:
+python3 todoist_trace.py export -f markdown -s 2026-09-02 -e 2026-10-02 --all-fields -o my_trace.md
+
+# Export work projects to CSV:
+python3 todoist_trace.py export -c work -f csv -o work_activities.csv
+
+# Export with flat project headings and task hierarchy:
+python3 todoist_trace.py export -f markdown --markdown-style flat --task-style flat -o flat_report.md
 ```
 
-#### 3. Export with Flat Project Headings
+#### 3. Check Cache Status (`status`)
+Inspects your local cache database, showing file size, entity counts, date boundaries, and synced UTC intervals:
+
 ```bash
-python3 todoist_trace.py -f markdown --markdown-style flat -o flat_report.md
+python3 todoist_trace.py status
 ```
 
-#### 4. Specify Custom Timezone
-```bash
-python3 todoist_trace.py -z Europe/Zurich -s 2026-10-01 -e 2026-10-02
+Output example:
+```text
+Todoist Trace Cache Status
+────────────────────────────────
+  Location:     ~/.todoist-trace/cache.db (SQLite)
+  File Size:    1.24 MB
+  Cache State:  Active
+  Last Sync:    2026-10-03T08:15:23Z
+
+Cached Entities:
+  • Projects:   48
+  • Sections:   12
+  • Labels:     35
+  • Tasks:      842
+  • Activities: 992 (2026-07-01T00:00:00Z → 2026-10-03T08:15:23Z)
+
+Synchronized UTC Ranges:
+  • 2026-07-01T00:00:00Z  →  2026-10-03T08:15:23Z
 ```
 
-#### 5. Quiet / Scripted Mode
-Suppress visual progress reporting for automated pipelines:
-```bash
-python3 todoist_trace.py -q -f csv -o automated_export.csv
-```
+#### 4. Single-Pass Execution (`run` or flag-only)
+Combines `sync` and `export` in a single step (ideal for one-shot runs or cron jobs):
 
-#### 6. Force Refresh Cache
-Fetch all records fresh from the Todoist API and update the local SQLite database:
 ```bash
-python3 todoist_trace.py --refresh
-```
+# Explicit run subcommand:
+python3 todoist_trace.py run -s 2026-09-01 -f markdown -o monthly.md
 
-#### 7. Run Without Local Cache
-```bash
-python3 todoist_trace.py --no-cache -f markdown -o trace_live.md
+# Direct flag-only invocation (automatically defaults to 'run'):
+python3 todoist_trace.py -s 2026-09-01 -f markdown -o monthly.md
 ```
 
 ---
 
 ## CLI Options
 
+### Common Options (All Commands)
 | Flag | Short | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `--format` | `-f` | `csv` | Output format: `csv` or `markdown` / `md`. |
-| `--start-date` | `-s` | `None` | Start date filter in `YYYY-MM-DD` format (inclusive). |
-| `--end-date` | `-e` | `None` | End date filter in `YYYY-MM-DD` format (inclusive). |
-| `--timezone` | `-z` | `local` | Timezone for daily overview and exports (e.g. `Europe/Zurich`, `UTC`, or `local`). |
-| `--category` | `-c` | `all` | Top-level project filter: `work`, `personal`, or `all`. |
-| `--output` | `-o` | Auto | Output file path (default: `todoist_trace_export.csv` or `.md`). |
-| `--token` | `-t` | Env/Config | Todoist API token (falls back to `TODOIST_API_TOKEN` env var or config file). |
-| `--markdown-style` | | `nested` | Markdown project heading style: `nested` (`#### admin / ##### email`) or `flat` (`#### admin/email`). |
-| `--task-style` | | `nested` | Markdown task bullet style: `nested` (bullet hierarchy) or `flat` (slash-separated). |
 | `--config` | | Auto | Path to custom config file (`JSON` or `.env`). |
 | `--cache-file` | | `~/.todoist-trace/cache.db` | Path to local cache file. |
-| `--no-cache` | | `False` | Disable persistent local cache. |
-| `--refresh` | | `False` | Force re-fetching all data from the API and refresh cache. |
 | `--quiet` | `-q` | `False` | Suppress progress updates and non-error messages. |
 | `--no-color` | | `False` | Disable ANSI colors in terminal output. |
 | `--plain` | | `False` | Use clean plain-text progress updates (no in-place cursor overwrites). |
+
+### Date & Time Options (`sync`, `export`, `run`)
+| Flag | Short | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `--start-date` | `-s` | `None` | Start date filter in `YYYY-MM-DD` format (inclusive). |
+| `--end-date` | `-e` | `None` | End date filter in `YYYY-MM-DD` format (inclusive). |
+| `--timezone` | `-z` | `local` | Timezone for daily overview and exports (e.g. `Europe/Zurich`, `UTC`, or `local`). |
+
+### Sync Options (`sync`, `run`)
+| Flag | Short | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `--token` | `-t` | Env/Config | Todoist API token (falls back to `TODOIST_API_TOKEN` env var or config file). |
+| `--refresh` | | `False` | Force re-fetching all data from the API and refresh cache. |
+| `--no-cache` | | `False` | Disable persistent local cache. |
+
+### Export Options (`export`, `run`)
+| Flag | Short | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `--format` | `-f` | `csv` | Output format: `csv` or `markdown` / `md`. |
+| `--output` | `-o` | Auto | Output file path (default: `todoist_trace_export.csv` or `.md`). |
+| `--category` | `-c` | `all` | Top-level project filter: `work`, `personal`, or `all`. |
+| `--markdown-style` | | `nested` | Markdown project heading style: `nested` (`#### admin / ##### email`) or `flat` (`#### admin/email`). |
+| `--task-style` | | `nested` | Markdown task bullet style: `nested` (bullet hierarchy) or `flat` (slash-separated). |
 | `--labels` / `--include-labels` | | `False` | Include task labels in exports. |
 | `--descriptions` / `--include-descriptions` | | `False` | Include task descriptions/notes in exports. |
 | `--priorities` / `--include-priorities` | | `False` | Include task priorities (`p1`-`p4`) in exports. |
