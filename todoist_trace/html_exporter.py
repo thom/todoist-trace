@@ -693,25 +693,9 @@ def generate_html(
       gap: 6px;
     }}
 
-    .task-node-card.is-parent {{
+    .task-item.is-parent-context {{
       background-color: var(--bg-card-subtle);
-      border: 1px solid var(--border);
-      border-left: 3px solid var(--accent);
-      padding: 6px 12px;
-      border-radius: 6px;
-    }}
-
-    .task-parent-icon {{
-      color: var(--accent);
-      font-weight: 700;
-      font-size: 13px;
-      margin-right: 4px;
-    }}
-
-    .task-parent-title {{
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text);
+      border-left: 2px dashed var(--accent);
     }}
 
     .badge-parent {{
@@ -1476,13 +1460,15 @@ def generate_html(
         }} else {{
           const subtaskCount = countTotalLeaves(node);
           html += `
-            <div class="task-node-card is-parent">
-              <div style="display: flex; align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 6px;">
-                  <span class="task-parent-icon">📁</span>
-                  <span class="task-parent-title">${{renderMarkdown(node.title, true)}}</span>
+            <div class="task-item is-parent-context">
+              <div class="task-main-row">
+                <div class="task-title-group">
+                  <span class="task-bullet" style="color: var(--text-dim); font-size: 13px;">○</span>
+                  <span class="task-content" style="color: var(--text-muted); font-weight: 500;">${{renderMarkdown(node.title, true)}}</span>
                 </div>
-                <span class="badge-parent">${{subtaskCount}} subtask${{subtaskCount === 1 ? '' : 's'}}</span>
+                <div class="task-meta-group">
+                  <span class="badge-parent">${{subtaskCount}} subtask${{subtaskCount === 1 ? '' : 's'}}</span>
+                </div>
               </div>
             </div>
           `;
