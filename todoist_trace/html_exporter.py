@@ -515,11 +515,12 @@ def generate_html(
 
     /* Top-Level Project Group */
     .top-project-group {{
-      margin-bottom: 14px;
-      background-color: var(--bg-card-subtle);
+      margin-bottom: 16px;
+      background-color: var(--bg-card);
       border: 1px solid var(--border-subtle);
-      border-radius: 8px;
-      padding: 12px 14px;
+      border-radius: 10px;
+      padding: 14px 16px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
     }}
 
     .top-project-group:last-child {{
@@ -530,16 +531,15 @@ def generate_html(
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 10px;
-      padding-bottom: 6px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
       border-bottom: 1px solid var(--border-subtle);
     }}
 
-    .top-project-hash {{
-      color: var(--accent);
-      font-weight: 800;
+    .top-project-icon {{
       font-size: 15px;
-      user-select: none;
+      line-height: 1;
+      margin-right: 2px;
     }}
 
     .top-project-title {{
@@ -552,10 +552,11 @@ def generate_html(
     .top-project-count-badge {{
       font-size: 11px;
       font-weight: 600;
-      color: var(--text-muted);
+      color: var(--text-dim);
       background-color: var(--bg-hover);
       padding: 2px 8px;
       border-radius: 10px;
+      border: 1px solid var(--border-subtle);
     }}
 
     .top-project-content {{
@@ -589,17 +590,16 @@ def generate_html(
       margin-bottom: 8px;
     }}
 
-    .subproject-hash {{
-      color: var(--accent);
-      font-weight: 700;
+    .subproject-icon {{
       font-size: 13px;
-      user-select: none;
+      line-height: 1;
+      margin-right: 2px;
     }}
 
     .subproject-title {{
       font-size: 13px;
       font-weight: 600;
-      color: var(--text);
+      color: var(--accent);
     }}
 
     .subproject-count-badge {{
@@ -1265,7 +1265,7 @@ def generate_html(
             <div class="top-project-group">
               <div class="top-project-header">
                 <div style="display: flex; align-items: center; gap: 8px;">
-                  <span class="top-project-hash">#</span>
+                  <span class="top-project-icon">📂</span>
                   <span class="top-project-title">${{escapeHtml(topProj)}}</span>
                 </div>
                 <span class="top-project-count-badge">${{topRecords.length}} task${{topRecords.length === 1 ? '' : 's'}}</span>
@@ -1548,14 +1548,13 @@ def generate_html(
       const sortedChildNames = Object.keys(node.children).sort();
       for (const childName of sortedChildNames) {{
         const child = node.children[childName];
-        const hashes = '#'.repeat(Math.min(depth + 2, 6));
         const totalChildTasks = countTotalProjectTasks(child);
 
         html += `
           <div class="subproject-group depth-${{depth}}">
             <div class="subproject-header">
               <div style="display: flex; align-items: center; gap: 6px;">
-                <span class="subproject-hash">${{hashes}}</span>
+                <span class="subproject-icon">📁</span>
                 <span class="subproject-title">${{escapeHtml(child.name)}}</span>
               </div>
               <span class="subproject-count-badge">${{totalChildTasks}} task${{totalChildTasks === 1 ? '' : 's'}}</span>
@@ -1593,12 +1592,13 @@ def generate_html(
       const sortedPaths = Object.keys(pathMap).filter(Boolean).sort();
       for (const path of sortedPaths) {{
         const recs = pathMap[path];
+        const displayPath = path.replace(/\\s*\\/\\s*/g, ' › ');
         html += `
           <div class="subproject-group depth-0">
             <div class="subproject-header">
               <div style="display: flex; align-items: center; gap: 6px;">
-                <span class="subproject-hash">##</span>
-                <span class="subproject-title">${{escapeHtml(path)}}</span>
+                <span class="subproject-icon">📁</span>
+                <span class="subproject-title">${{escapeHtml(displayPath)}}</span>
               </div>
               <span class="subproject-count-badge">${{recs.length}} task${{recs.length === 1 ? '' : 's'}}</span>
             </div>
@@ -1654,7 +1654,7 @@ def generate_html(
           <div class="day-group">
             <div class="day-header" onclick="toggleDayAccordion(this)">
               <div class="day-title">
-                <span class="top-project-hash" style="margin-right: 4px;">#</span>
+                <span class="top-project-icon" style="margin-right: 4px;">📂</span>
                 <span style="font-weight: 700;">${{escapeHtml(proj)}}</span>
                 <span class="day-count-badge">${{tasks.length}} tasks</span>
               </div>
