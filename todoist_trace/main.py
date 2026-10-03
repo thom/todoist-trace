@@ -396,7 +396,7 @@ def run_hierarchy(settings: Dict[str, Any], reporter: FancyProgressReporter, cac
                 p for p in all_projects
                 if p.get("is_archived") and not hierarchy_store.get_parent_id(p["id"]) and p["id"] not in hierarchy_store.projects
             ]
-            title = "Unassigned Archived Projects (not in project_hierarchy.json)"
+            title = "Unassigned Archived Projects (not in hierarchy.json)"
         elif show_all:
             filtered = all_projects
             title = "All Project Hierarchy Mappings"
@@ -412,7 +412,7 @@ def run_hierarchy(settings: Dict[str, Any], reporter: FancyProgressReporter, cac
 
         if not filtered:
             if unassigned_only:
-                reporter.print_text("  All archived projects are listed in project_hierarchy.json!\n")
+                reporter.print_text("  All archived projects are listed in hierarchy.json!\n")
             else:
                 reporter.print_text("  No projects found.\n")
             return 0

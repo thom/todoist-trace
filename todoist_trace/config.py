@@ -41,7 +41,7 @@ DEFAULT_APP_DIR = Path.home() / ".todoist-trace"
 DEFAULT_CONFIG_PATH = DEFAULT_APP_DIR / "config.json"
 DEFAULT_CACHE_PATH = DEFAULT_APP_DIR / "cache.db"
 DEFAULT_JSON_CACHE_PATH = DEFAULT_APP_DIR / "cache.json"
-DEFAULT_HIERARCHY_PATH = DEFAULT_APP_DIR / "project_hierarchy.json"
+DEFAULT_HIERARCHY_PATH = DEFAULT_APP_DIR / "hierarchy.json"
 
 
 def load_env_file(path: Path) -> Dict[str, str]:

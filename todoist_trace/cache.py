@@ -163,7 +163,7 @@ class TraceCache:
         raw_path = cache_file or str(DEFAULT_JSON_CACHE_PATH)
         self.path = Path(raw_path).expanduser()
         self.hierarchy_store: Optional[HierarchyStore] = (
-            HierarchyStore(self.path.parent / "project_hierarchy.json") if self.enabled else None
+            HierarchyStore(self.path.parent / "hierarchy.json") if self.enabled else None
         )
         self._projects: List[Dict[str, Any]] = []
         self.tasks: Dict[str, Dict[str, Any]] = {}
@@ -449,7 +449,7 @@ class SQLiteTraceCache:
         raw_path = cache_file or str(DEFAULT_CACHE_PATH)
         self.path = Path(raw_path).expanduser()
         self.hierarchy_store: Optional[HierarchyStore] = (
-            HierarchyStore(self.path.parent / "project_hierarchy.json") if self.enabled else None
+            HierarchyStore(self.path.parent / "hierarchy.json") if self.enabled else None
         )
         self._projects: List[Dict[str, Any]] = []
         self._tasks: TaskCacheDict = TaskCacheDict(self)

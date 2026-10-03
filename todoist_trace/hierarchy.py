@@ -129,7 +129,7 @@ class HierarchyStore:
                 existing["updated_at"] = now_iso
         else:
             # If project is not in store yet, record it if active or if it has a parent.
-            # Do NOT automatically add unassigned archived projects to project_hierarchy.json.
+            # Do NOT automatically add unassigned archived projects to hierarchy.json.
             if is_archived and not parent_str:
                 return
 
@@ -353,7 +353,7 @@ class HierarchyStore:
         if not chain:
             return ("Unknown", "", [])
 
-        # Only group under 'archived' if project has no parent (is archived) and is NOT listed in project_hierarchy.json
+        # Only group under 'archives' if project has no parent (is archived) and is NOT listed in hierarchy.json
         proj_meta = self.projects.get(pid_str)
         in_hierarchy_store = pid_str in self.projects
         is_archived = False

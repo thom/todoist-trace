@@ -128,7 +128,7 @@ class ProjectTreeResolver:
                 has_parent = bool(self.hierarchy_store.get_parent_id(pid_str))
 
             # Only group under 'archives' if the project has no parent (is archived)
-            # and is not listed in project_hierarchy.json
+            # and is not listed in hierarchy.json
             in_hierarchy_store = bool(self.hierarchy_store and pid_str in self.hierarchy_store.projects)
 
             if is_archived and not has_parent and not in_hierarchy_store:

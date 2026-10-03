@@ -17,7 +17,7 @@ from todoist_trace.main import run_hierarchy, main
 
 @pytest.fixture
 def synthetic_hierarchy_store(tmp_path):
-    store_file = tmp_path / "project_hierarchy.json"
+    store_file = tmp_path / "hierarchy.json"
     return HierarchyStore(file_path=store_file)
 
 
@@ -168,7 +168,7 @@ class TestHierarchyStoreCore:
         assert store.resolve_path_to_id("platform-engineering") == "syn_p10"
 
     def test_atomic_file_persistence(self, tmp_path):
-        store_file = tmp_path / "project_hierarchy.json"
+        store_file = tmp_path / "hierarchy.json"
         store1 = HierarchyStore(file_path=store_file)
         store1.record_batch([
             {"id": "syn_p1", "name": "core-platform", "parent_id": None},
@@ -255,11 +255,11 @@ class TestCacheAndResolverIntegration:
         assert path == "legacy-experiment"
         assert levels == ["legacy-experiment"]
 
-        # If user explicitly records the archived project as root in project_hierarchy.json:
+        # If user explicitly records the archived project as root in hierarchy.json:
         store.set_parent("syn_p99", None, name="legacy-experiment")
         resolver_explicit = ProjectTreeResolver(projects, hierarchy_store=store)
         res_explicit = resolver_explicit.resolve("syn_p99")
-        # Since it IS listed in project_hierarchy.json, it is not grouped under archives
+        # Since it IS listed in hierarchy.json, it is not grouped under archives
         assert res_explicit["top_level_project"] == "legacy-experiment"
         assert res_explicit["project_path"] == ""
 
