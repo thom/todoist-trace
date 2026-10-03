@@ -697,6 +697,48 @@ if (xssOut.includes("javascript:")) {
                 proc_exec.returncode == 0
             ), f"Node.js execution failed:\nSTDOUT: {proc_exec.stdout}\nSTDERR: {proc_exec.stderr}"
 
+    def test_generate_html_vector_icons(self):
+        """Verify vector SVG icons are embedded and legacy emojis/bullets are replaced."""
+        from todoist_trace.exporters import generate_html
+
+        records = [
+            {
+                "top_level_project": "infrastructure",
+                "project_path": "services/auth",
+                "project_levels": ["services", "auth"],
+                "section": "Sprint 1",
+                "date": "2026-10-02",
+                "time": "14:00:00",
+                "task_path": "Deploy Cluster / Worker Nodes",
+                "task_levels": ["Deploy Cluster", "Worker Nodes"],
+                "parent_task_id": "parent_001",
+                "labels": ["backend"],
+                "priority": "p2",
+                "description": "Cluster provisioning details",
+            }
+        ]
+        html_out = generate_html(records, title="Vector Icon Test")
+
+        # Verify SVG definitions in ICONS object
+        assert "icon-layers" in html_out
+        assert "icon-hash" in html_out
+        assert "icon-section" in html_out
+        assert "icon-check-square" in html_out
+        assert "icon-minus-square" in html_out
+
+        # Verify SVG elements
+        assert "<svg class=\"icon icon-layers\"" in html_out
+        assert "<svg class=\"icon icon-hash\"" in html_out
+        assert "<svg class=\"icon icon-section\"" in html_out
+        assert "<svg class=\"icon icon-check-square\"" in html_out
+        assert "<svg class=\"icon icon-minus-square\"" in html_out
+
+        # Verify absence of legacy emojis and raw bullet glyphs
+        assert "📂" not in html_out
+        assert "📁" not in html_out
+        assert "▤" not in html_out
+
+
 
 
 

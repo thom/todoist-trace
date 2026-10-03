@@ -537,9 +537,12 @@ def generate_html(
     }}
 
     .top-project-icon {{
-      font-size: 15px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       line-height: 1;
-      margin-right: 2px;
+      margin-right: 4px;
+      color: var(--accent);
     }}
 
     .top-project-title {{
@@ -591,9 +594,13 @@ def generate_html(
     }}
 
     .subproject-icon {{
-      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       line-height: 1;
-      margin-right: 2px;
+      margin-right: 4px;
+      color: var(--accent);
+      opacity: 0.9;
     }}
 
     .subproject-title {{
@@ -739,8 +746,48 @@ def generate_html(
     }}
 
     .task-bullet {{
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 1px;
+      flex-shrink: 0;
+    }}
+
+    .subtask-branch {{
+      color: var(--text-dim);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+      margin-right: 1px;
+    }}
+
+    /* SVG Vector Icons */
+    .icon {{
+      display: inline-flex;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }}
+
+    .icon-layers {{
       color: var(--accent);
-      margin-top: 2px;
+    }}
+
+    .icon-hash {{
+      color: var(--accent);
+      opacity: 0.9;
+    }}
+
+    .icon-section {{
+      color: var(--accent);
+      vertical-align: -2px;
+    }}
+
+    .icon-check-square {{
+      color: var(--accent);
+    }}
+
+    .icon-minus-square {{
+      color: var(--text-dim);
     }}
 
     .task-content {{
@@ -1067,6 +1114,15 @@ def generate_html(
 
   <!-- Client-Side Dashboard Engine -->
   <script>
+    // SVG Vector Icon Suite
+    const ICONS = {{
+      layers: '<svg class="icon icon-layers" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>',
+      hash: '<svg class="icon icon-hash" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>',
+      section: '<svg class="icon icon-section" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M12 3v18"/></svg>',
+      checkSquare: '<svg class="icon icon-check-square" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4" fill="var(--accent-light)"/><path d="m9 12 2 2 4-4" stroke="var(--accent)" stroke-width="2.5"/></svg>',
+      minusSquare: '<svg class="icon icon-minus-square" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><line x1="8" y1="12" x2="16" y2="12" stroke-width="2.5"/></svg>'
+    }};
+
     let rawRecords = [];
     try {{
       rawRecords = JSON.parse(document.getElementById('trace-data').textContent);
@@ -1316,7 +1372,7 @@ def generate_html(
             <div class="top-project-group">
               <div class="top-project-header">
                 <div style="display: flex; align-items: center; gap: 8px;">
-                  <span class="top-project-icon">📂</span>
+                  <span class="top-project-icon">${{ICONS.layers}}</span>
                   <span class="top-project-title">${{escapeHtml(topProj)}}</span>
                 </div>
                 <span class="top-project-count-badge">${{topRecords.length}} task${{topRecords.length === 1 ? '' : 's'}}</span>
@@ -1415,8 +1471,8 @@ def generate_html(
       }}
 
       const bullet = isSubtask
-        ? '<span class="task-bullet" style="color: var(--accent); font-weight: 700;">↳ •</span>'
-        : '<span class="task-bullet">•</span>';
+        ? `<span class="task-bullet is-subtask"><span class="subtask-branch">↳</span>${{ICONS.checkSquare}}</span>`
+        : `<span class="task-bullet">${{ICONS.checkSquare}}</span>`;
 
       return `
         <div class="task-item ${{isSubtask ? 'is-subtask' : ''}}">
@@ -1463,7 +1519,7 @@ def generate_html(
             <div class="task-item is-parent-context">
               <div class="task-main-row">
                 <div class="task-title-group">
-                  <span class="task-bullet" style="color: var(--text-dim); font-size: 13px;">○</span>
+                  <span class="task-bullet is-parent">${{ICONS.minusSquare}}</span>
                   <span class="task-content" style="color: var(--text-muted); font-weight: 500;">${{renderMarkdown(node.title, true)}}</span>
                 </div>
                 <div class="task-meta-group">
@@ -1572,7 +1628,7 @@ def generate_html(
           <div class="project-section-group">
             <div class="project-section-header">
               <div class="project-section-title-wrap">
-                <span class="section-icon">▤</span>
+                <span class="section-icon">${{ICONS.section}}</span>
                 <span class="section-name">${{renderMarkdown(sec, true)}}</span>
               </div>
               <span class="section-count-badge">${{recs.length}} task${{recs.length === 1 ? '' : 's'}}</span>
@@ -1610,7 +1666,7 @@ def generate_html(
           <div class="subproject-group depth-${{depth}}">
             <div class="subproject-header">
               <div style="display: flex; align-items: center; gap: 6px;">
-                <span class="subproject-icon">📁</span>
+                <span class="subproject-icon">${{ICONS.hash}}</span>
                 <span class="subproject-title">${{escapeHtml(child.name)}}</span>
               </div>
               <span class="subproject-count-badge">${{totalChildTasks}} task${{totalChildTasks === 1 ? '' : 's'}}</span>
@@ -1653,7 +1709,7 @@ def generate_html(
           <div class="subproject-group depth-0">
             <div class="subproject-header">
               <div style="display: flex; align-items: center; gap: 6px;">
-                <span class="subproject-icon">📁</span>
+                <span class="subproject-icon">${{ICONS.hash}}</span>
                 <span class="subproject-title">${{escapeHtml(displayPath)}}</span>
               </div>
               <span class="subproject-count-badge">${{recs.length}} task${{recs.length === 1 ? '' : 's'}}</span>
@@ -1710,7 +1766,7 @@ def generate_html(
           <div class="day-group">
             <div class="day-header" onclick="toggleDayAccordion(this)">
               <div class="day-title">
-                <span class="top-project-icon" style="margin-right: 4px;">📂</span>
+                <span class="top-project-icon" style="margin-right: 4px;">${{ICONS.layers}}</span>
                 <span style="font-weight: 700;">${{escapeHtml(proj)}}</span>
                 <span class="day-count-badge">${{tasks.length}} tasks</span>
               </div>
@@ -1766,7 +1822,7 @@ def generate_html(
           <tr>
             <td style="font-family: monospace;">${{escapeHtml(r.date)}} ${{escapeHtml(r.time || '')}}</td>
             <td><span class="badge" style="background:var(--bg-hover);">${{escapeHtml(r.top_level_project || '-')}}</span></td>
-            <td>${{escapeHtml(projDisplay)}}${{r.section ? ` <span class="section-tag"><span style="color:var(--accent);opacity:0.8;margin-right:3px;">▤</span>${{renderMarkdown(r.section, true)}}</span>` : ''}}</td>
+            <td>${{escapeHtml(projDisplay)}}${{r.section ? ` <span class="section-tag">${{ICONS.section}} ${{renderMarkdown(r.section, true)}}</span>` : ''}}</td>
             <td>
               ${{taskCellContent}}
               ${{r.description ? `<div style="font-size:11px; color:var(--text-muted); margin-top:3px;">${{renderMarkdown(r.description)}}</div>` : ''}}
