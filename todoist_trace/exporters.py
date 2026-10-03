@@ -8,6 +8,8 @@ import io
 from pathlib import Path
 from typing import Any, Dict, List
 
+from .html_exporter import export_html, generate_html
+
 
 def generate_csv(
     records: List[Dict[str, Any]],

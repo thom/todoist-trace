@@ -412,3 +412,83 @@ class TestExporters:
         assert "[@finance]" in md_text
         assert "> Check deductions" in md_text
 
+    def test_generate_html_structure_and_stats(self):
+        from todoist_trace.exporters import generate_html
+
+        records = [
+            {
+                "top_level_project": "Work",
+                "project_path": "backend/auth",
+                "section": "Sprint 1",
+                "date": "2026-09-30",
+                "time": "14:30:00",
+                "task_path": "Auth / OAuth Flow",
+                "labels": ["security", "urgent"],
+                "priority": "p1",
+                "description": "Rotate secrets",
+                "due_date": "2026-09-29",
+                "due_variance": "+1d overdue",
+                "due_status": "overdue",
+            },
+            {
+                "top_level_project": "Work",
+                "project_path": "frontend",
+                "section": "UI",
+                "date": "2026-09-30",
+                "time": "16:00:00",
+                "task_path": "Dashboard UI",
+                "labels": ["design"],
+                "priority": "p3",
+                "description": "",
+                "due_date": "2026-09-30",
+                "due_variance": "on time",
+                "due_status": "on_time",
+            },
+        ]
+        html_out = generate_html(records, title="Custom Test Title")
+        assert "<!DOCTYPE html>" in html_out
+        assert "Custom Test Title" in html_out
+        assert 'id="trace-data"' in html_out
+        assert "OAuth Flow" in html_out
+        assert "Rotate secrets" in html_out
+        assert 'data-theme="dark"' in html_out
+        assert "theme-toggle" in html_out
+        assert "timeline-chart" in html_out
+        assert "project-bars" in html_out
+        assert "table-body" in html_out
+
+    def test_export_html_file_creation(self, tmp_path):
+        from todoist_trace.exporters import export_html
+
+        records = [
+            {
+                "top_level_project": "Personal",
+                "project_path": "",
+                "section": "",
+                "date": "2026-10-01",
+                "time": "09:00:00",
+                "task_path": "Morning run",
+                "labels": ["health"],
+                "priority": "p4",
+                "description": "5 km pace",
+                "due_date": "2026-10-01",
+                "due_variance": "on time",
+                "due_status": "on_time",
+            }
+        ]
+        html_file = tmp_path / "dashboard.html"
+        export_html(records, str(html_file))
+
+        assert html_file.is_file()
+        content = html_file.read_text(encoding="utf-8")
+        assert "Morning run" in content
+        assert "5 km pace" in content
+        assert "health" in content
+
+    def test_generate_html_empty_records(self):
+        from todoist_trace.exporters import generate_html
+
+        html_out = generate_html([])
+        assert "<!DOCTYPE html>" in html_out
+        assert 'id="trace-data">[]</script>' in html_out
+

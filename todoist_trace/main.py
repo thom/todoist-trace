@@ -15,7 +15,7 @@ from .cache import (
     normalize_start_date,
 )
 from .cli import parse_args, resolve_settings
-from .exporters import export_csv, export_markdown
+from .exporters import export_csv, export_html, export_markdown
 from .filters import filter_records
 from .progress import FancyProgressReporter
 from .resolvers import (
@@ -293,6 +293,15 @@ def run_export(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
             include_priorities=inc_prio,
             include_due_dates=inc_due,
         )
+    elif out_fmt == "html":
+        export_html(
+            filtered_records,
+            out_path,
+            include_labels=inc_labels,
+            include_descriptions=inc_desc,
+            include_priorities=inc_prio,
+            include_due_dates=inc_due,
+        )
     else:
         export_markdown(
             filtered_records,
@@ -310,7 +319,7 @@ def run_export(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
         matched_count=len(filtered_records),
         total_count=len(all_records),
         out_fmt=out_fmt,
-        style_desc=settings["markdown_style"] if out_fmt != "csv" else "",
+        style_desc=settings["markdown_style"] if out_fmt == "markdown" else "",
     )
 
     if not settings.get("quiet") and filtered_records:
@@ -371,11 +380,15 @@ def main(argv: Optional[list] = None) -> int:
     cache_mode = "SQLite" if settings.get("cache_file", "").endswith((".db", ".sqlite")) else "JSON"
     cache_desc = f"{settings.get('cache_file')} ({cache_mode})" if settings.get("cache_enabled") else "Disabled"
 
-    fmt_desc = (
-        f"{settings.get('format', 'csv').upper()} ({settings.get('markdown_style', 'nested')})"
-        if command in ("export", "run")
-        else f"SQLite Cache ({cache_mode})"
-    )
+    if command in ("export", "run"):
+        if settings.get("format") == "markdown":
+            fmt_desc = f"MARKDOWN ({settings.get('markdown_style', 'nested')})"
+        elif settings.get("format") == "html":
+            fmt_desc = "HTML (Interactive Dashboard)"
+        else:
+            fmt_desc = "CSV"
+    else:
+        fmt_desc = f"SQLite Cache ({cache_mode})"
 
     reporter.print_banner(
         date_range_desc=date_range_desc,

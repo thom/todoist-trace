@@ -16,8 +16,14 @@ A robust, read-only Python CLI tool to export Todoist activity logs into structu
   - Automatically adapts to terminal width (`shutil.get_terminal_size()`) and collapses to clean milestone logs when piped or running in CI (`NO_COLOR` standard compliant).
 - **Hierarchical Markdown Export**:
   - **Nested Headings**: Structured heading levels by project depth and section (`## Date` -> `### Root Project` -> `#### Sub-project` -> `##### Section`).
-  - **Task Bullet Hierarchies**: Renders parent tasks with indented sub-bullets for completed subtasks.
   - **Flat Headings & Paths**: Optional flat representation with slash-separated headings (`#### admin/email`) and flat bullet paths.
+- **Interactive HTML Dashboard Export**:
+  - Standalone, self-contained single-page dashboard with zero external dependencies (works 100% offline).
+  - KPI metric cards (total tasks, active days, tasks/day velocity, on-time completion rate, top projects).
+  - Interactive SVG charts (daily activity velocity timeline with clickable day filtering, project share breakdown).
+  - Multi-dimensional filters (search box, category, project, priority, due status, @tag filter).
+  - Three distinct view modes: Collapsible Daily Timeline, Project Tree Hierarchy, and Sortable Data Table.
+  - Built-in Dark and Light mode toggle with auto-detection and persistence.
 - **RFC 4180 Compliant CSV Export**: Clean, standard CSV output escaping commas, quotes, and newlines (`top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id`).
 - **Interval-Aware SQLite Cache Engine**:
   - Automatically caches projects, sections, tasks, completed events, and synchronized date ranges in `~/.todoist-trace/cache.db`.
@@ -197,6 +203,9 @@ python3 todoist_trace.py export -c work -f csv -o work_activities.csv
 
 # Export with flat project headings and task hierarchy:
 python3 todoist_trace.py export -f markdown --markdown-style flat --task-style flat -o flat_report.md
+
+# Generate interactive HTML dashboard with charts and filters:
+python3 todoist_trace.py export -f html --all-fields -o activity_dashboard.html
 ```
 
 #### 3. Check Cache Status (`status`)
@@ -267,8 +276,8 @@ python3 todoist_trace.py -s 2026-09-01 -f markdown -o monthly.md
 ### Export Options (`export`, `run`)
 | Flag | Short | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `--format` | `-f` | `csv` | Output format: `csv` or `markdown` / `md`. |
-| `--output` | `-o` | Auto | Output file path (default: `todoist_trace_export.csv` or `.md`). |
+| `--format` | `-f` | `csv` | Output format: `csv`, `markdown` / `md`, or `html`. |
+| `--output` | `-o` | Auto | Output file path (default: `todoist_trace_export.csv`, `.md`, or `.html`). |
 | `--category` | `-c` | `all` | Top-level project filter: `work`, `personal`, or `all`. |
 | `--markdown-style` | | `nested` | Markdown project heading style: `nested` (`#### admin / ##### email`) or `flat` (`#### admin/email`). |
 | `--task-style` | | `nested` | Markdown task bullet style: `nested` (bullet hierarchy) or `flat` (slash-separated). |

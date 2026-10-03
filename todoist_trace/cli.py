@@ -99,15 +99,15 @@ def _add_export_only_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "-f", "--format",
-        choices=["csv", "markdown", "md"],
+        choices=["csv", "markdown", "md", "html", "htm"],
         default=None,
-        help="Output format: csv or markdown / md (default: csv)",
+        help="Output format: csv, markdown / md, or html (default: csv)",
     )
     parser.add_argument(
         "-o", "--output",
         type=str,
         default=None,
-        help="Output file path (default: todoist_trace_export.csv or .md)",
+        help="Output file path (default: todoist_trace_export.csv, .md, or .html)",
     )
     parser.add_argument(
         "--markdown-style",
@@ -255,8 +255,13 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
     token = getattr(args, "token", None) or os.environ.get("TODOIST_API_TOKEN") or file_cfg.get("token")
 
     # 2. Format
-    raw_format = getattr(args, "format", None) or os.environ.get("TODOIST_TRACE_FORMAT") or file_cfg.get("format") or "csv"
-    output_format = "markdown" if raw_format.lower() in ("md", "markdown") else "csv"
+    raw_format = (getattr(args, "format", None) or os.environ.get("TODOIST_TRACE_FORMAT") or file_cfg.get("format") or "csv").lower()
+    if raw_format in ("md", "markdown"):
+        output_format = "markdown"
+    elif raw_format in ("html", "htm"):
+        output_format = "html"
+    else:
+        output_format = "csv"
 
     # 3. Category
     category = (getattr(args, "category", None) or os.environ.get("TODOIST_TRACE_CATEGORY") or file_cfg.get("category") or "all").lower()
@@ -276,7 +281,12 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
     # 6. Output path
     output = getattr(args, "output", None) or os.environ.get("TODOIST_TRACE_OUTPUT") or file_cfg.get("output")
     if not output:
-        output = "todoist_trace_export.csv" if output_format == "csv" else "todoist_trace_export.md"
+        if output_format == "csv":
+            output = "todoist_trace_export.csv"
+        elif output_format == "html":
+            output = "todoist_trace_export.html"
+        else:
+            output = "todoist_trace_export.md"
 
     # 7. Cache settings
     cache_enabled = not getattr(args, "no_cache", False) and file_cfg.get("cache_enabled", True)

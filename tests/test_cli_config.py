@@ -323,3 +323,41 @@ class TestSubcommandsAndStages:
         assert cache.conn is not None
         cache.close()
 
+    def test_run_export_html(self, tmp_path):
+        from todoist_trace.cache import SQLiteTraceCache
+        from todoist_trace.main import run_export
+        from todoist_trace.progress import FancyProgressReporter
+
+        db_path = tmp_path / "html_test.db"
+        cache = SQLiteTraceCache(cache_file=str(db_path), enabled=True)
+        cache.projects = [{"id": "p1", "name": "Work", "parent_id": None}]
+        cache.tasks["t1"] = {"content": "Build Dashboard", "parent_id": None, "priority": 4}
+        cache.merge_events([{
+            "id": "ev99",
+            "event_date": "2026-09-20T10:00:00Z",
+            "object_id": "t1",
+            "parent_project_id": "p1",
+            "extra_data": {"content": "Build Dashboard", "priority": 4},
+        }])
+        cache.save()
+
+        out_html = tmp_path / "output.html"
+        settings = {
+            "token": None,
+            "cache_file": str(db_path),
+            "cache_enabled": True,
+            "format": "html",
+            "output": str(out_html),
+            "category": "all",
+            "start_date": None,
+            "end_date": None,
+            "quiet": True,
+        }
+        reporter = FancyProgressReporter(quiet=True)
+        ret = run_export(settings, reporter, cache)
+        assert ret == 0
+        assert out_html.is_file()
+        text = out_html.read_text(encoding="utf-8")
+        assert "Build Dashboard" in text
+        assert "timeline-chart" in text
+

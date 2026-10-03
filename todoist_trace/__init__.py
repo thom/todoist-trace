@@ -34,9 +34,11 @@ from .config import (
 )
 from .exporters import (
     export_csv,
+    export_html,
     export_markdown,
     format_task_bullets,
     generate_csv,
+    generate_html,
     generate_markdown,
 )
 from .filters import filter_records
@@ -80,6 +82,7 @@ __all__ = [
     "create_cache",
     "create_parser",
     "export_csv",
+    "export_html",
     "export_markdown",
     "fetch_completed_activities",
     "fetch_labels",
@@ -91,6 +94,7 @@ __all__ = [
     "format_priority",
     "format_task_bullets",
     "generate_csv",
+    "generate_html",
     "generate_markdown",
     "load_config",
     "load_env_file",
