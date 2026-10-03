@@ -200,19 +200,38 @@ def create_parser() -> argparse.ArgumentParser:
     _add_sync_only_arguments(run_p)
     _add_export_only_arguments(run_p)
 
+    # 5. hierarchy
+    hier_p = subparsers.add_parser(
+        "hierarchy",
+        help="Inspect or update persistent project hierarchy archive",
+        description="Inspect or assign project parents in the persistent project hierarchy store.",
+    )
+    _add_common_arguments(hier_p)
+    hier_sub = hier_p.add_subparsers(dest="hierarchy_action", help="Hierarchy action to perform")
+
+    hlist_p = hier_sub.add_parser("list", help="List project hierarchy mappings")
+    _add_common_arguments(hlist_p)
+    hlist_p.add_argument("--unassigned", action="store_true", default=False, help="Show only unassigned/archived projects")
+    hlist_p.add_argument("--all", action="store_true", default=False, help="Show all projects")
+
+    hset_p = hier_sub.add_parser("set", help="Assign a parent project to a target project")
+    _add_common_arguments(hset_p)
+    hset_p.add_argument("project", type=str, help="Target project ID or exact name")
+    hset_p.add_argument("parent", type=str, help="Parent project ID or path (e.g. 'work / operations' or 'backlog')")
+
     return parser
 
 
 def parse_args(argv: Optional[list] = None) -> argparse.Namespace:
     """
     Parse command-line arguments.
-    Supports git-style subcommands: 'sync', 'export', 'status', 'run'.
+    Supports git-style subcommands: 'sync', 'export', 'status', 'run', 'hierarchy'.
     If invoked without a subcommand or directly with option flags, defaults to 'run'.
     """
     parser = create_parser()
     args_list = list(sys.argv[1:]) if argv is None else list(argv)
 
-    subcommands = {"sync", "export", "status", "run"}
+    subcommands = {"sync", "export", "status", "run", "hierarchy"}
     if not args_list:
         args_list = ["run"]
     elif args_list[0] not in subcommands and args_list[0] not in ("-h", "--help"):
@@ -350,4 +369,9 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         "include_priorities": include_priorities,
         "include_due_dates": include_due_dates,
         "all_fields": all_fields,
+        "hierarchy_action": getattr(args, "hierarchy_action", "list") or "list",
+        "hierarchy_project": getattr(args, "project", None),
+        "hierarchy_parent": getattr(args, "parent", None),
+        "hierarchy_unassigned": getattr(args, "unassigned", False),
+        "hierarchy_all": getattr(args, "all", False),
     }

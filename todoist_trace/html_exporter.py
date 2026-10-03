@@ -991,7 +991,7 @@ def generate_html(
         <div class="kpi-subtext" id="kpi-ontime-sub">Based on due dates</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Top Category</div>
+        <div class="kpi-label">Top Project</div>
         <div class="kpi-value" id="kpi-top-project">-</div>
         <div class="kpi-subtext" id="kpi-top-proj-sub">- tasks</div>
       </div>
@@ -1082,7 +1082,7 @@ def generate_html(
           <thead>
             <tr>
               <th onclick="sortTable('date')">Date & Time ⬍</th>
-              <th onclick="sortTable('top_level_project')">Category ⬍</th>
+              <th onclick="sortTable('top_level_project')">Top Project ⬍</th>
               <th onclick="sortTable('project_path')">Project / Section ⬍</th>
               <th onclick="sortTable('task_path')">Task Hierarchy ⬍</th>
               <th onclick="sortTable('priority')">Priority ⬍</th>
@@ -1200,7 +1200,17 @@ def generate_html(
       const due = document.getElementById('due-filter').value;
 
       filteredRecords = rawRecords.filter(r => {{
-        if (cat !== 'all' && (r.top_level_project || '').toLowerCase() !== cat) return false;
+        if (cat !== 'all') {{
+          const tp = (r.top_level_project || '').toLowerCase();
+          const recCat = (r.category || '').toLowerCase();
+          if (cat === 'work') {{
+            if (!tp.startsWith('work') && recCat !== 'work') return false;
+          }} else if (cat === 'personal') {{
+            if (!tp.startsWith('personal') && recCat !== 'personal') return false;
+          }} else {{
+            if (tp !== cat && recCat !== cat) return false;
+          }}
+        }}
         if (proj !== 'all' && r.top_level_project !== proj) return false;
         if (prio !== 'all' && (r.priority || '').toLowerCase() !== prio) return false;
         if (due !== 'all' && (r.due_status || '') !== due) return false;
@@ -1663,7 +1673,11 @@ def generate_html(
         byProject[p].push(r);
       }});
 
-      const sortedTopProjs = Object.keys(byProject).sort();
+      const sortedTopProjs = Object.keys(byProject).sort((a, b) => {{
+        const diff = byProject[b].length - byProject[a].length;
+        if (diff !== 0) return diff;
+        return a.localeCompare(b);
+      }});
 
       let html = '';
       for (const proj of sortedTopProjs) {{
@@ -1675,7 +1689,7 @@ def generate_html(
               <div class="day-title">
                 <span class="top-project-icon" style="margin-right: 4px;">${{ICONS.layers}}</span>
                 <span style="font-weight: 700;">${{escapeHtml(proj)}}</span>
-                <span class="day-count-badge">${{tasks.length}} tasks</span>
+                <span class="day-count-badge">${{tasks.length}} task${{tasks.length === 1 ? '' : 's'}}</span>
               </div>
               <span class="day-toggle-icon">▼</span>
             </div>

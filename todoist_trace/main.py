@@ -17,6 +17,7 @@ from .cache import (
 from .cli import parse_args, resolve_settings
 from .exporters import export_csv, export_html, export_markdown
 from .filters import filter_records
+from .hierarchy import HierarchyStore
 from .progress import FancyProgressReporter
 from .resolvers import (
     LabelResolver,
@@ -198,7 +199,8 @@ def run_sync(settings: Dict[str, Any], reporter: FancyProgressReporter, cache: A
     else:
         events_to_resolve = new_events
 
-    project_resolver = ProjectTreeResolver(projects)
+    hierarchy_store = getattr(cache, "hierarchy_store", None) if cache else None
+    project_resolver = ProjectTreeResolver(projects, hierarchy_store=hierarchy_store)
     section_resolver = SectionResolver(
         token=token,
         preloaded_sections=sections,
@@ -253,7 +255,8 @@ def run_export(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
     if cache.get_resolved_activities_count() < cache.get_events_count():
         reporter.print_text("Materializing resolved activities in cache for fast exports...")
         all_events = cache.get_all_events()
-        project_resolver = ProjectTreeResolver(cache.projects)
+        hierarchy_store = getattr(cache, "hierarchy_store", None) if cache else None
+        project_resolver = ProjectTreeResolver(cache.projects, hierarchy_store=hierarchy_store)
         section_resolver = SectionResolver(
             token=settings.get("token"),
             preloaded_sections=cache.sections,
@@ -349,6 +352,177 @@ def run_export(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
     return 0
 
 
+def run_hierarchy(settings: Dict[str, Any], reporter: FancyProgressReporter, cache: Any) -> int:
+    """Inspect or update persistent project hierarchy mappings."""
+    hierarchy_store = getattr(cache, "hierarchy_store", None)
+    if not hierarchy_store:
+        hierarchy_store = HierarchyStore()
+
+    # Seed the store if empty and cache has projects
+    if not hierarchy_store.projects and cache and getattr(cache, "projects", None):
+        hierarchy_store.record_batch(cache.projects)
+
+    action = settings.get("hierarchy_action", "list")
+
+    if action == "list":
+        unassigned_only = settings.get("hierarchy_unassigned", False)
+        show_all = settings.get("hierarchy_all", False)
+
+        all_projects = list(hierarchy_store.projects.values())
+
+        if unassigned_only:
+            filtered = [p for p in all_projects if p.get("is_archived") and not p.get("parent_id")]
+            title = "Unassigned Archived Projects"
+        elif show_all:
+            filtered = all_projects
+            title = "All Project Hierarchy Mappings"
+        else:
+            # Default: show archived projects
+            filtered = [p for p in all_projects if p.get("is_archived")]
+            title = "Archived Project Hierarchy Mappings"
+
+        filtered.sort(key=lambda p: p.get("name", "").lower())
+
+        reporter.print_text(reporter.style.bold(f"\n{title}"))
+        reporter.print_text(reporter.style.dim("─" * 78))
+
+        if not filtered:
+            if unassigned_only:
+                reporter.print_text("  All archived projects have parents assigned!\n")
+            else:
+                reporter.print_text("  No projects found.\n")
+            return 0
+
+        reporter.print_text(
+            f"  {reporter.style.dim('PROJECT ID'):<18}  {reporter.style.dim('STATUS'):<10}  {reporter.style.dim('NAME'):<30}  {reporter.style.dim('PARENT / PATH')}"
+        )
+        reporter.print_text(reporter.style.dim("  " + "─" * 76))
+
+        unassigned_count = 0
+        for p in filtered:
+            pid = p["id"]
+            name = p.get("name", "Unnamed")
+            is_arch = p.get("is_archived", False)
+            parent_id = p.get("parent_id")
+
+            status_str = reporter.style.dim("Archived") if is_arch else reporter.style.cyan("Active")
+
+            if parent_id:
+                top, path, levels = hierarchy_store.resolve_project_chain(pid)
+                full_chain = " › ".join([top] + levels[:-1]) if len(levels) > 0 else top
+                if not full_chain:
+                    full_chain = top
+                path_str = reporter.style.green(f"↳ {full_chain}")
+            else:
+                if is_arch:
+                    unassigned_count += 1
+                    path_str = reporter.style.yellow("(Unassigned - Root)")
+                else:
+                    path_str = reporter.style.dim("(Root Project)")
+
+            reporter.print_text(f"  {pid:<18}  {status_str:<10}  {name[:30]:<30}  {path_str}")
+
+        reporter.print_text(reporter.style.dim("  " + "─" * 76))
+        summary = f"  Total: {len(filtered)} project(s)"
+        if unassigned_count > 0:
+            summary += f" ({unassigned_count} unassigned)"
+        reporter.print_text(summary)
+        if unassigned_count > 0:
+            reporter.print_text(
+                f"\n  {reporter.style.dim('Tip: Assign a parent with:')}\n"
+                f"  todoist-trace hierarchy set <project> <parent>\n"
+            )
+        else:
+            reporter.print_text("")
+        return 0
+
+    elif action == "set":
+        target_arg = settings.get("hierarchy_project")
+        parent_arg = settings.get("hierarchy_parent")
+
+        if not target_arg or not parent_arg:
+            sys.stderr.write("Error: 'hierarchy set' requires both <project> and <parent> arguments.\n")
+            return 1
+
+        # 1. Resolve target project
+        target_proj = hierarchy_store.get_project(target_arg)
+        if not target_proj:
+            candidates = hierarchy_store.find_projects_by_name(target_arg)
+            if len(candidates) == 1:
+                target_proj = candidates[0]
+            elif len(candidates) > 1:
+                sys.stderr.write(f"Error: Ambiguous project name '{target_arg}'. Matches multiple projects:\n")
+                for c in candidates:
+                    sys.stderr.write(f"  - ID: {c['id']}, Name: {c['name']}\n")
+                sys.stderr.write("Please specify by project ID instead.\n")
+                return 1
+            else:
+                sys.stderr.write(f"Error: Project '{target_arg}' not found in hierarchy store.\n")
+                return 1
+
+        target_id = target_proj["id"]
+        target_name = target_proj.get("name", "Unnamed")
+
+        # 2. Resolve parent project
+        if parent_arg.lower() in ("root", "none", "null"):
+            parent_id = None
+            parent_name = "Root"
+        else:
+            parent_proj = hierarchy_store.get_project(parent_arg)
+            if not parent_proj:
+                path_resolved_id = hierarchy_store.resolve_path_to_id(parent_arg)
+                if path_resolved_id:
+                    parent_proj = hierarchy_store.get_project(path_resolved_id)
+                else:
+                    candidates = hierarchy_store.find_projects_by_name(parent_arg)
+                    if len(candidates) == 1:
+                        parent_proj = candidates[0]
+                    elif len(candidates) > 1:
+                        sys.stderr.write(f"Error: Ambiguous parent name '{parent_arg}'. Matches multiple projects:\n")
+                        for c in candidates:
+                            sys.stderr.write(f"  - ID: {c['id']}, Name: {c['name']}\n")
+                        sys.stderr.write("Please specify the full path (e.g. 'work / operations') or project ID.\n")
+                        return 1
+
+            if not parent_proj:
+                sys.stderr.write(f"Error: Parent project or path '{parent_arg}' not found.\n")
+                return 1
+
+            parent_id = parent_proj["id"]
+            parent_name = parent_proj.get("name", "Unnamed")
+
+        # 3. Apply assignment
+        success = hierarchy_store.set_parent(target_id, parent_id)
+        if not success:
+            sys.stderr.write(f"Error: Cannot set parent. Circular reference detected between '{target_name}' and '{parent_name}'.\n")
+            return 1
+
+        # 4. Synchronize with cache if active
+        if cache and cache.enabled and hasattr(cache, "conn") and cache.conn:
+            with cache.conn:
+                cache.conn.execute(
+                    "UPDATE projects SET parent_id = ? WHERE id = ?",
+                    (parent_id, target_id),
+                )
+            cache.clear_resolved_activities()
+            if hasattr(cache, "_load_metadata"):
+                cache._load_metadata()
+
+        top, path, levels = hierarchy_store.resolve_project_chain(target_id)
+        full_chain = " › ".join([top] + levels) if levels else top
+
+        reporter.print_text(
+            f"\n{reporter.style.green('✔')} Successfully assigned project '{reporter.style.bold(target_name)}' "
+            f"to parent '{reporter.style.bold(parent_name)}'."
+        )
+        reporter.print_text(f"  Resolved hierarchy path: {reporter.style.bold(full_chain)}\n")
+        return 0
+
+    else:
+        sys.stderr.write(f"Error: Unknown hierarchy action: {action}\n")
+        return 1
+
+
 def main(argv: Optional[list] = None) -> int:
     """Main CLI entrypoint supporting git-style subcommands."""
     args = parse_args(argv)
@@ -373,6 +547,8 @@ def main(argv: Optional[list] = None) -> int:
 
     if command == "status":
         return run_status(settings, reporter, cache)
+    elif command == "hierarchy":
+        return run_hierarchy(settings, reporter, cache)
 
     # For sync, export, and run: render sleek banner
     date_range_desc = f"{settings['start_date'] or 'genesis'} to {settings['end_date'] or 'now'}"

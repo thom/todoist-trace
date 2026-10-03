@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from .config import DEFAULT_CACHE_PATH, DEFAULT_JSON_CACHE_PATH, resolve_timezone
+from .hierarchy import HierarchyStore
 
 
 def normalize_start_date(
@@ -161,7 +162,10 @@ class TraceCache:
         self.enabled = enabled
         raw_path = cache_file or str(DEFAULT_JSON_CACHE_PATH)
         self.path = Path(raw_path).expanduser()
-        self.projects: List[Dict[str, Any]] = []
+        self.hierarchy_store: Optional[HierarchyStore] = (
+            HierarchyStore(self.path.parent / "project_hierarchy.json") if self.enabled else None
+        )
+        self._projects: List[Dict[str, Any]] = []
         self.tasks: Dict[str, Dict[str, Any]] = {}
         self.sections: Dict[str, Dict[str, Any]] = {}
         self.labels: Dict[str, Dict[str, Any]] = {}
@@ -172,13 +176,37 @@ class TraceCache:
         if self.enabled:
             self.load()
 
+    @property
+    def projects(self) -> List[Dict[str, Any]]:
+        return self._projects
+
+    @projects.setter
+    def projects(self, projs: List[Dict[str, Any]]) -> None:
+        if self.hierarchy_store:
+            self.hierarchy_store.record_batch(projs)
+            for p in projs:
+                pid = p.get("id")
+                if pid:
+                    preserved_parent = self.hierarchy_store.get_parent_id(pid)
+                    if preserved_parent and not p.get("parent_id"):
+                        p["parent_id"] = preserved_parent
+        self._projects = projs
+
     def load(self) -> None:
         if not self.path.is_file():
             return
         try:
             with open(self.path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                self.projects = data.get("projects", [])
+                loaded_projs = data.get("projects", [])
+                if self.hierarchy_store:
+                    for p in loaded_projs:
+                        pid = p.get("id")
+                        if pid:
+                            pres = self.hierarchy_store.get_parent_id(pid)
+                            if pres and not p.get("parent_id"):
+                                p["parent_id"] = pres
+                self._projects = loaded_projs
                 self.tasks = data.get("tasks", {})
                 self.sections = data.get("sections", {})
                 self.labels = data.get("labels", {})
@@ -420,6 +448,9 @@ class SQLiteTraceCache:
         self.enabled = enabled
         raw_path = cache_file or str(DEFAULT_CACHE_PATH)
         self.path = Path(raw_path).expanduser()
+        self.hierarchy_store: Optional[HierarchyStore] = (
+            HierarchyStore(self.path.parent / "project_hierarchy.json") if self.enabled else None
+        )
         self._projects: List[Dict[str, Any]] = []
         self._tasks: TaskCacheDict = TaskCacheDict(self)
         self._sections: SectionCacheDict = SectionCacheDict(self)
@@ -631,8 +662,29 @@ class SQLiteTraceCache:
         if not self.conn:
             return
         cur = self.conn.cursor()
-        cur.execute("SELECT payload FROM projects")
-        self._projects = [json.loads(row[0]) for row in cur.fetchall()]
+        cur.execute("SELECT payload, parent_id FROM projects")
+        loaded_projs = []
+        for row in cur.fetchall():
+            try:
+                p = json.loads(row[0])
+                if row[1] and not p.get("parent_id"):
+                    p["parent_id"] = row[1]
+                loaded_projs.append(p)
+            except Exception:
+                pass
+
+        if self.hierarchy_store:
+            pids = {str(p.get("id")) for p in loaded_projs if p.get("id")}
+            for pid, hp in self.hierarchy_store.projects.items():
+                if pid not in pids:
+                    loaded_projs.append({
+                        "id": pid,
+                        "name": hp.get("name", "Unnamed"),
+                        "parent_id": hp.get("parent_id"),
+                        "is_archived": hp.get("is_archived", False),
+                        "is_deleted": hp.get("is_deleted", False),
+                    })
+        self._projects = loaded_projs
 
         cur.execute("SELECT id, payload FROM sections")
         for row in cur.fetchall():
@@ -652,11 +704,19 @@ class SQLiteTraceCache:
 
     @projects.setter
     def projects(self, projs: List[Dict[str, Any]]) -> None:
+        if self.hierarchy_store:
+            self.hierarchy_store.record_batch(projs)
+            for p in projs:
+                pid = p.get("id")
+                if pid:
+                    preserved_parent = self.hierarchy_store.get_parent_id(pid)
+                    if preserved_parent and not p.get("parent_id"):
+                        p["parent_id"] = preserved_parent
+
         self._projects = projs
         if not self.enabled or not self.conn:
             return
         with self.conn:
-            self.conn.execute("DELETE FROM projects")
             rows = [
                 (
                     str(p.get("id", "")),
@@ -669,7 +729,16 @@ class SQLiteTraceCache:
                 for p in projs
             ]
             self.conn.executemany(
-                "INSERT OR REPLACE INTO projects (id, parent_id, name, is_archived, is_deleted, payload) VALUES (?, ?, ?, ?, ?, ?)",
+                """
+                INSERT INTO projects (id, parent_id, name, is_archived, is_deleted, payload)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    parent_id = COALESCE(excluded.parent_id, projects.parent_id),
+                    name = excluded.name,
+                    is_archived = excluded.is_archived,
+                    is_deleted = excluded.is_deleted,
+                    payload = excluded.payload
+                """,
                 rows,
             )
 

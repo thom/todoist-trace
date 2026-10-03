@@ -44,10 +44,24 @@ def format_event_datetime(
 class ProjectTreeResolver:
     """Resolves project hierarchies into root ancestor and relative sub-project path."""
 
-    def __init__(self, projects: List[Dict[str, Any]]):
+    def __init__(self, projects: List[Dict[str, Any]], hierarchy_store: Optional[Any] = None):
+        self.hierarchy_store = hierarchy_store
         self.projects_by_id: Dict[str, Dict[str, Any]] = {
-            str(p["id"]): p for p in projects if "id" in p
+            str(p["id"]): dict(p) for p in projects if "id" in p
         }
+        if self.hierarchy_store:
+            for pid, hp in self.hierarchy_store.projects.items():
+                if pid not in self.projects_by_id:
+                    self.projects_by_id[pid] = {
+                        "id": pid,
+                        "name": hp.get("name", "Unnamed"),
+                        "parent_id": hp.get("parent_id"),
+                        "is_archived": hp.get("is_archived", False),
+                        "is_deleted": hp.get("is_deleted", False),
+                    }
+                else:
+                    if not self.projects_by_id[pid].get("parent_id") and hp.get("parent_id"):
+                        self.projects_by_id[pid]["parent_id"] = hp["parent_id"]
         self.cache: Dict[str, Dict[str, Any]] = {}
 
     def resolve(self, project_id: Optional[Any]) -> Dict[str, Any]:
@@ -80,9 +94,25 @@ class ProjectTreeResolver:
             proj = self.projects_by_id[curr]
             chain.append(proj.get("name", "Unnamed"))
             parent = proj.get("parent_id")
+            if not parent and self.hierarchy_store:
+                parent = self.hierarchy_store.get_parent_id(curr)
             curr = str(parent) if parent else None
 
         chain.reverse()
+
+        # Fallback path protection: if chain has <= 1 item and hierarchy_store has a fallback_path
+        if pid_str in self.projects_by_id and self.hierarchy_store:
+            fb = self.hierarchy_store.get_fallback_path(pid_str)
+            if len(chain) <= 1 and fb:
+                leaf_name = chain[0] if chain else self.projects_by_id[pid_str].get("name", "Unnamed")
+                full = fb + [leaf_name]
+                res = {
+                    "top_level_project": full[0],
+                    "project_path": "/".join(full[1:]),
+                    "project_levels": full[1:],
+                }
+                self.cache[pid_str] = res
+                return res
 
         if not chain:
             res = {
