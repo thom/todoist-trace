@@ -128,6 +128,11 @@ class HierarchyStore:
                 existing["is_deleted"] = is_deleted
                 existing["updated_at"] = now_iso
         else:
+            # If project is not in store yet, record it if active or if it has a parent.
+            # Do NOT automatically add unassigned archived projects to project_hierarchy.json.
+            if is_archived and not parent_str:
+                return
+
             self.projects[pid_str] = {
                 "id": pid_str,
                 "name": name or "Unnamed",
@@ -188,15 +193,18 @@ class HierarchyStore:
         if auto_save:
             self.save()
 
-    def set_parent(self, project_id: Any, parent_id: Optional[Any]) -> bool:
+    def set_parent(
+        self,
+        project_id: Any,
+        parent_id: Optional[Any],
+        name: Optional[str] = None,
+        is_archived: bool = True,
+    ) -> bool:
         """
         Explicitly assign a parent project ID to a target project.
-        Returns True if successful, False if project not found or creates a circular reference.
+        Returns True if successful, False if creates a circular reference.
         """
         pid_str = str(project_id)
-        if pid_str not in self.projects:
-            return False
-
         parent_str = str(parent_id) if parent_id else None
 
         # Check circular reference
@@ -210,8 +218,23 @@ class HierarchyStore:
                 visited.add(curr)
                 curr = self.projects[curr].get("parent_id")
 
-        self.projects[pid_str]["parent_id"] = parent_str
-        self.projects[pid_str]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        if pid_str in self.projects:
+            self.projects[pid_str]["parent_id"] = parent_str
+            if name:
+                self.projects[pid_str]["name"] = name
+            self.projects[pid_str]["updated_at"] = now_iso
+        else:
+            self.projects[pid_str] = {
+                "id": pid_str,
+                "name": name or "Unnamed",
+                "parent_id": parent_str,
+                "is_archived": is_archived,
+                "is_deleted": False,
+                "fallback_path": [],
+                "updated_at": now_iso,
+            }
+
         self.recompute_fallback_paths()
         self.save()
         return True
@@ -330,9 +353,20 @@ class HierarchyStore:
         if not chain:
             return ("Unknown", "", [])
 
-        # If project is unassigned archived (no parent and no fallback), group under 'archived'
+        # Only group under 'archived' if project has no parent (is archived) and is NOT listed in project_hierarchy.json
         proj_meta = self.projects.get(pid_str)
-        if proj_meta and proj_meta.get("is_archived") and len(chain) == 1:
+        in_hierarchy_store = pid_str in self.projects
+        is_archived = False
+        has_parent = False
+
+        if proj_meta:
+            is_archived = proj_meta.get("is_archived", False)
+            has_parent = bool(proj_meta.get("parent_id"))
+        elif live_map and pid_str in live_map:
+            is_archived = live_map[pid_str].get("is_archived", False)
+            has_parent = bool(live_map[pid_str].get("parent_id"))
+
+        if is_archived and not has_parent and not in_hierarchy_store:
             leaf_name = chain[0]
             if leaf_name.lower() == "archived":
                 return ("archived", "", [])

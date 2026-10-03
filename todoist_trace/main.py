@@ -362,17 +362,41 @@ def run_hierarchy(settings: Dict[str, Any], reporter: FancyProgressReporter, cac
     if not hierarchy_store.projects and cache and getattr(cache, "projects", None):
         hierarchy_store.record_batch(cache.projects)
 
+    # Build known_projects combining cache and hierarchy_store
+    known_projects: Dict[str, Dict[str, Any]] = {}
+    if cache and getattr(cache, "projects", None):
+        for p in cache.projects:
+            pid = str(p.get("id"))
+            if pid:
+                known_projects[pid] = dict(p)
+
+    for pid, hp in hierarchy_store.projects.items():
+        if pid not in known_projects:
+            known_projects[pid] = {
+                "id": pid,
+                "name": hp.get("name", "Unnamed"),
+                "parent_id": hp.get("parent_id"),
+                "is_archived": hp.get("is_archived", False),
+                "is_deleted": hp.get("is_deleted", False),
+            }
+        else:
+            if hp.get("parent_id"):
+                known_projects[pid]["parent_id"] = hp["parent_id"]
+
+    all_projects = list(known_projects.values()) if known_projects else list(hierarchy_store.projects.values())
+
     action = settings.get("hierarchy_action", "list")
 
     if action == "list":
         unassigned_only = settings.get("hierarchy_unassigned", False)
         show_all = settings.get("hierarchy_all", False)
 
-        all_projects = list(hierarchy_store.projects.values())
-
         if unassigned_only:
-            filtered = [p for p in all_projects if p.get("is_archived") and not p.get("parent_id")]
-            title = "Unassigned Archived Projects"
+            filtered = [
+                p for p in all_projects
+                if p.get("is_archived") and not hierarchy_store.get_parent_id(p["id"]) and p["id"] not in hierarchy_store.projects
+            ]
+            title = "Unassigned Archived Projects (not in project_hierarchy.json)"
         elif show_all:
             filtered = all_projects
             title = "All Project Hierarchy Mappings"
@@ -388,7 +412,7 @@ def run_hierarchy(settings: Dict[str, Any], reporter: FancyProgressReporter, cac
 
         if not filtered:
             if unassigned_only:
-                reporter.print_text("  All archived projects have parents assigned!\n")
+                reporter.print_text("  All archived projects are listed in project_hierarchy.json!\n")
             else:
                 reporter.print_text("  No projects found.\n")
             return 0
@@ -403,7 +427,8 @@ def run_hierarchy(settings: Dict[str, Any], reporter: FancyProgressReporter, cac
             pid = p["id"]
             name = p.get("name", "Unnamed")
             is_arch = p.get("is_archived", False)
-            parent_id = p.get("parent_id")
+            parent_id = hierarchy_store.get_parent_id(pid) or p.get("parent_id")
+            in_store = pid in hierarchy_store.projects
 
             status_str = reporter.style.dim("Archived") if is_arch else reporter.style.cyan("Active")
 
@@ -415,8 +440,11 @@ def run_hierarchy(settings: Dict[str, Any], reporter: FancyProgressReporter, cac
                 path_str = reporter.style.green(f"↳ {full_chain}")
             else:
                 if is_arch:
-                    unassigned_count += 1
-                    path_str = reporter.style.yellow("(Unassigned -> archived)")
+                    if in_store:
+                        path_str = reporter.style.cyan("(Root in hierarchy.json)")
+                    else:
+                        unassigned_count += 1
+                        path_str = reporter.style.yellow("(Unassigned -> archived)")
                 else:
                     path_str = reporter.style.dim("(Root Project)")
 
@@ -448,6 +476,9 @@ def run_hierarchy(settings: Dict[str, Any], reporter: FancyProgressReporter, cac
         target_proj = hierarchy_store.get_project(target_arg)
         if not target_proj:
             candidates = hierarchy_store.find_projects_by_name(target_arg)
+            if not candidates and known_projects:
+                target_clean = target_arg.strip().lower()
+                candidates = [p for p in known_projects.values() if p.get("name", "").strip().lower() == target_clean or p.get("id") == target_arg]
             if len(candidates) == 1:
                 target_proj = candidates[0]
             elif len(candidates) > 1:
@@ -457,11 +488,12 @@ def run_hierarchy(settings: Dict[str, Any], reporter: FancyProgressReporter, cac
                 sys.stderr.write("Please specify by project ID instead.\n")
                 return 1
             else:
-                sys.stderr.write(f"Error: Project '{target_arg}' not found in hierarchy store.\n")
+                sys.stderr.write(f"Error: Project '{target_arg}' not found in hierarchy store or cache.\n")
                 return 1
 
         target_id = target_proj["id"]
         target_name = target_proj.get("name", "Unnamed")
+        target_is_archived = target_proj.get("is_archived", True)
 
         # 2. Resolve parent project
         if parent_arg.lower() in ("root", "none", "null"):
@@ -475,6 +507,9 @@ def run_hierarchy(settings: Dict[str, Any], reporter: FancyProgressReporter, cac
                     parent_proj = hierarchy_store.get_project(path_resolved_id)
                 else:
                     candidates = hierarchy_store.find_projects_by_name(parent_arg)
+                    if not candidates and known_projects:
+                        p_clean = parent_arg.strip().lower()
+                        candidates = [p for p in known_projects.values() if p.get("name", "").strip().lower() == p_clean or p.get("id") == parent_arg]
                     if len(candidates) == 1:
                         parent_proj = candidates[0]
                     elif len(candidates) > 1:
@@ -492,7 +527,9 @@ def run_hierarchy(settings: Dict[str, Any], reporter: FancyProgressReporter, cac
             parent_name = parent_proj.get("name", "Unnamed")
 
         # 3. Apply assignment
-        success = hierarchy_store.set_parent(target_id, parent_id)
+        success = hierarchy_store.set_parent(
+            target_id, parent_id, name=target_name, is_archived=target_is_archived
+        )
         if not success:
             sys.stderr.write(f"Error: Cannot set parent. Circular reference detected between '{target_name}' and '{parent_name}'.\n")
             return 1

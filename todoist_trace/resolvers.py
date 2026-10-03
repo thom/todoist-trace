@@ -123,7 +123,15 @@ class ProjectTreeResolver:
         else:
             proj_data = self.projects_by_id.get(pid_str)
             is_archived = proj_data.get("is_archived", False) if proj_data else False
-            if is_archived and len(chain) == 1:
+            has_parent = bool(proj_data.get("parent_id")) if proj_data else False
+            if not has_parent and self.hierarchy_store:
+                has_parent = bool(self.hierarchy_store.get_parent_id(pid_str))
+
+            # Only group under 'archived' if the project has no parent (is archived)
+            # and is not listed in project_hierarchy.json
+            in_hierarchy_store = bool(self.hierarchy_store and pid_str in self.hierarchy_store.projects)
+
+            if is_archived and not has_parent and not in_hierarchy_store:
                 leaf_name = chain[0]
                 if leaf_name.lower() == "archived":
                     res = {

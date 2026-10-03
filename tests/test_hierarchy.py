@@ -248,17 +248,27 @@ class TestCacheAndResolverIntegration:
         assert res_arch["project_path"] == "legacy-experiment"
         assert res_arch["project_levels"] == ["legacy-experiment"]
 
-        # In store resolve_project_chain as well
-        top, path, levels = store.resolve_project_chain("syn_p99")
+        # In store resolve_project_chain (with live map) as well
+        live_map = {p["id"]: p for p in projects}
+        top, path, levels = store.resolve_project_chain("syn_p99", live_projects_by_id=live_map)
         assert top == "archived"
         assert path == "legacy-experiment"
         assert levels == ["legacy-experiment"]
 
-        # Once re-linked/assigned to a parent, it moves out of "archived"
+        # If user explicitly records the archived project as root in project_hierarchy.json:
+        store.set_parent("syn_p99", None, name="legacy-experiment")
+        resolver_explicit = ProjectTreeResolver(projects, hierarchy_store=store)
+        res_explicit = resolver_explicit.resolve("syn_p99")
+        # Since it IS listed in project_hierarchy.json, it is not grouped under archived
+        assert res_explicit["top_level_project"] == "legacy-experiment"
+        assert res_explicit["project_path"] == ""
+
+        # Once re-linked/assigned to a parent, it moves under that parent
         store.set_parent("syn_p99", "syn_p1")
-        top_relinked, path_relinked, levels_relinked = store.resolve_project_chain("syn_p99")
-        assert top_relinked == "core-platform"
-        assert path_relinked == "legacy-experiment"
+        resolver_relinked = ProjectTreeResolver(projects, hierarchy_store=store)
+        res_relinked = resolver_relinked.resolve("syn_p99")
+        assert res_relinked["top_level_project"] == "core-platform"
+        assert res_relinked["project_path"] == "legacy-experiment"
 
     def test_category_archived_filtering(self, tmp_path):
         from todoist_trace.filters import filter_records
