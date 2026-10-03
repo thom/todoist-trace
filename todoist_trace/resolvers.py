@@ -258,15 +258,93 @@ def format_priority(priority_val: Optional[Any]) -> str:
       4 -> p1 (Urgent / Red)
       3 -> p2 (High / Orange)
       2 -> p3 (Medium / Blue)
-      1 -> p4 (Normal / Default / None)
+      1 -> p4 (Normal / Default)
+    Returns 'p4' if None or unparseable.
     """
-    if priority_val in (4, "4"):
-        return "p1"
-    elif priority_val in (3, "3"):
-        return "p2"
-    elif priority_val in (2, "2"):
-        return "p3"
+    if priority_val is None:
+        return "p4"
+    try:
+        val = int(priority_val)
+        if val == 4:
+            return "p1"
+        elif val == 3:
+            return "p2"
+        elif val == 2:
+            return "p3"
+        elif val == 1:
+            return "p4"
+    except (ValueError, TypeError):
+        pass
     return "p4"
+
+
+def calculate_due_variance(
+    due_date_str: Optional[str],
+    completion_date_str: Optional[str],
+    was_overdue: bool = False,
+) -> Dict[str, Any]:
+    """
+    Calculate variance between original due date and completion date.
+    Returns:
+        {
+            "due_date": "YYYY-MM-DD" or "",
+            "days_variance": int (positive if completed after due date, negative if early, 0 if on time),
+            "status": "on_time" | "overdue" | "early" | "undated",
+            "variance_desc": "+1d overdue" | "on time" | "-2d early" | ""
+        }
+    """
+    if not due_date_str:
+        return {
+            "due_date": "",
+            "days_variance": 0,
+            "status": "undated",
+            "variance_desc": "",
+        }
+
+    clean_due = str(due_date_str)[:10]
+    if not completion_date_str:
+        return {
+            "due_date": clean_due,
+            "days_variance": 0,
+            "status": "undated",
+            "variance_desc": "",
+        }
+
+    try:
+        d_due = datetime.strptime(clean_due, "%Y-%m-%d").date()
+        d_done = datetime.strptime(str(completion_date_str)[:10], "%Y-%m-%d").date()
+        diff_days = (d_done - d_due).days
+
+        if diff_days > 0 or was_overdue:
+            days = max(1, diff_days)
+            return {
+                "due_date": clean_due,
+                "days_variance": days,
+                "status": "overdue",
+                "variance_desc": f"+{days}d overdue",
+            }
+        elif diff_days < 0:
+            days = abs(diff_days)
+            return {
+                "due_date": clean_due,
+                "days_variance": -days,
+                "status": "early",
+                "variance_desc": f"-{days}d early",
+            }
+        else:
+            return {
+                "due_date": clean_due,
+                "days_variance": 0,
+                "status": "on_time",
+                "variance_desc": "on time",
+            }
+    except Exception:
+        return {
+            "due_date": clean_due,
+            "days_variance": 0,
+            "status": "undated",
+            "variance_desc": "",
+        }
 
 
 class TaskHierarchyResolver:
@@ -307,9 +385,10 @@ class TaskHierarchyResolver:
                 task_info = {
                     "content": data.get("content", f"[Task {tid}]"),
                     "parent_id": str(data["parent_id"]) if data.get("parent_id") else None,
-                    "labels": data.get("labels", []),
                     "description": data.get("description", ""),
                     "priority": data.get("priority", 1),
+                    "labels": data.get("labels", []),
+                    "due": data.get("due"),
                 }
                 self.task_cache[tid] = task_info
                 if self.cache:
@@ -319,9 +398,10 @@ class TaskHierarchyResolver:
                 fallback = {
                     "content": f"[Task {tid}]",
                     "parent_id": None,
-                    "labels": [],
                     "description": "",
                     "priority": 1,
+                    "labels": [],
+                    "due": None,
                 }
                 self.task_cache[tid] = fallback
                 if self.cache:
@@ -334,7 +414,7 @@ class TaskHierarchyResolver:
 
     def resolve(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Resolve an activity event into formatted task hierarchy data.
+        Resolve an activity event into formatted task hierarchy data and metadata.
         Returns:
             {
                 "task_path": str,          # e.g. "Root / Subtask / Leaf"
@@ -345,8 +425,14 @@ class TaskHierarchyResolver:
                 "event_id": str,
                 "date": str,               # YYYY-MM-DD
                 "time": str,               # HH:MM:SS
-                "labels": List[str],
                 "description": str,
+                "priority": str,           # p1, p2, p3, p4
+                "raw_priority": int,
+                "labels": List[str],
+                "due_date": str,           # YYYY-MM-DD
+                "due_variance": str,       # e.g. "+1d overdue", "on time"
+                "due_status": str,         # on_time, overdue, early, undated
+                "was_overdue": bool,
             }
         """
         extra = event.get("extra_data", {})
@@ -359,11 +445,9 @@ class TaskHierarchyResolver:
         event_date_str = str(event.get("event_date", ""))
         date_part, time_part = format_event_datetime(event_date_str, tz=self.tz)
 
+        # Extended metadata: description, priority, labels, due date
         obj_id = str(event.get("object_id", ""))
         cached_task = self.task_cache.get(obj_id, {})
-        raw_labels = extra.get("labels")
-        if not raw_labels:
-            raw_labels = cached_task.get("labels", [])
 
         description = extra.get("description")
         if description is None:
@@ -373,6 +457,17 @@ class TaskHierarchyResolver:
         if raw_priority is None:
             raw_priority = cached_task.get("priority")
         priority_code = format_priority(raw_priority)
+
+        raw_labels = extra.get("labels")
+        if not raw_labels:
+            raw_labels = cached_task.get("labels", [])
+
+        due_date_str = extra.get("due_date") or extra.get("completed_due_date")
+        if not due_date_str and isinstance(cached_task.get("due"), dict):
+            due_date_str = cached_task["due"].get("date")
+
+        was_overdue = bool(extra.get("was_overdue", False))
+        due_info = calculate_due_variance(due_date_str, date_part, was_overdue=was_overdue)
 
         if not parent_task_id:
             return {
@@ -384,10 +479,14 @@ class TaskHierarchyResolver:
                 "event_id": str(event.get("id", "")),
                 "date": date_part,
                 "time": time_part,
-                "labels": list(raw_labels or []),
                 "description": description or "",
                 "priority": priority_code,
                 "raw_priority": raw_priority,
+                "labels": list(raw_labels or []),
+                "due_date": due_info["due_date"],
+                "due_variance": due_info["variance_desc"],
+                "due_status": due_info["status"],
+                "was_overdue": was_overdue,
             }
 
         ancestors: List[str] = []
@@ -417,10 +516,14 @@ class TaskHierarchyResolver:
             "event_id": str(event.get("id", "")),
             "date": date_part,
             "time": time_part,
-            "labels": list(raw_labels or []),
             "description": description or "",
             "priority": priority_code,
             "raw_priority": raw_priority,
+            "labels": list(raw_labels or []),
+            "due_date": due_info["due_date"],
+            "due_variance": due_info["variance_desc"],
+            "due_status": due_info["status"],
+            "was_overdue": was_overdue,
         }
 
 
@@ -455,10 +558,14 @@ def build_trace_records(
             "parent_task_id": t_res["parent_task_id"],
             "project_id": t_res["project_id"],
             "event_id": t_res["event_id"],
-            "labels": resolved_labels,
             "description": t_res.get("description", ""),
             "priority": t_res.get("priority", "p4"),
             "raw_priority": t_res.get("raw_priority"),
+            "labels": resolved_labels,
+            "due_date": t_res.get("due_date", ""),
+            "due_variance": t_res.get("due_variance", ""),
+            "due_status": t_res.get("due_status", "undated"),
+            "was_overdue": t_res.get("was_overdue", False),
         })
         if progress_cb and (idx % 20 == 0 or idx == total):
             progress_cb(idx, total)

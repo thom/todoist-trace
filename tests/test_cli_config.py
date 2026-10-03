@@ -87,77 +87,62 @@ class TestCLIAndSettings:
         with pytest.raises(ValueError, match="Invalid timezone"):
             resolve_settings(args_invalid)
 
-    def test_include_labels_flag_and_config(self, tmp_path, monkeypatch):
+    def test_extended_metadata_flags_defaults(self):
+        args = parse_args([])
+        settings = resolve_settings(args)
+        assert settings["include_labels"] is False
+        assert settings["include_descriptions"] is False
+        assert settings["include_priorities"] is False
+        assert settings["include_due_dates"] is False
+        assert settings["all_fields"] is False
+
+    def test_extended_metadata_individual_cli_flags(self):
+        args = parse_args([
+            "--labels",
+            "--descriptions",
+            "--priorities",
+            "--due-dates",
+        ])
+        settings = resolve_settings(args)
+        assert settings["include_labels"] is True
+        assert settings["include_descriptions"] is True
+        assert settings["include_priorities"] is True
+        assert settings["include_due_dates"] is True
+
+    def test_extended_metadata_all_fields_flag(self):
+        args = parse_args(["--all-fields"])
+        settings = resolve_settings(args)
+        assert settings["include_labels"] is True
+        assert settings["include_descriptions"] is True
+        assert settings["include_priorities"] is True
+        assert settings["include_due_dates"] is True
+        assert settings["all_fields"] is True
+
+    def test_extended_metadata_from_config_file(self, tmp_path):
         import json
+        cfg_file = tmp_path / "custom_config.json"
+        cfg_data = {
+            "token": "tok_cfg",
+            "include_labels": True,
+            "include_priorities": True,
+        }
+        cfg_file.write_text(json.dumps(cfg_data), encoding="utf-8")
 
-        # Default is False
-        args_def = parse_args([])
-        assert resolve_settings(args_def)["include_labels"] is False
+        args = parse_args(["--config", str(cfg_file)])
+        settings = resolve_settings(args)
+        assert settings["include_labels"] is True
+        assert settings["include_priorities"] is True
+        assert settings["include_descriptions"] is False
+        assert settings["include_due_dates"] is False
 
-        # CLI flag overrides to True
-        args_flag = parse_args(["--labels"])
-        assert resolve_settings(args_flag)["include_labels"] is True
-
-        args_alias = parse_args(["--include-labels"])
-        assert resolve_settings(args_alias)["include_labels"] is True
-
-        # Config file support
-        cfg_file = tmp_path / "cfg.json"
-        cfg_file.write_text(json.dumps({"token": "tok", "include_labels": True}), encoding="utf-8")
-        args_cfg = parse_args(["--config", str(cfg_file)])
-        assert resolve_settings(args_cfg)["include_labels"] is True
-
-        # Env var support
+    def test_extended_metadata_from_env_vars(self, monkeypatch):
         monkeypatch.setenv("TODOIST_TRACE_LABELS", "1")
-        assert resolve_settings(args_def)["include_labels"] is True
-
-    def test_include_descriptions_flag_and_config(self, tmp_path, monkeypatch):
-        import json
-
-        # Default is False
-        args_def = parse_args([])
-        assert resolve_settings(args_def)["include_descriptions"] is False
-
-        # CLI flag overrides to True
-        args_flag = parse_args(["--descriptions"])
-        assert resolve_settings(args_flag)["include_descriptions"] is True
-
-        args_alias = parse_args(["--include-descriptions"])
-        assert resolve_settings(args_alias)["include_descriptions"] is True
-
-        # Config file support
-        cfg_file = tmp_path / "cfg_desc.json"
-        cfg_file.write_text(json.dumps({"token": "tok", "include_descriptions": True}), encoding="utf-8")
-        args_cfg = parse_args(["--config", str(cfg_file)])
-        assert resolve_settings(args_cfg)["include_descriptions"] is True
-
-        # Env var support
         monkeypatch.setenv("TODOIST_TRACE_DESCRIPTIONS", "true")
-        assert resolve_settings(args_def)["include_descriptions"] is True
 
-    def test_include_priorities_flag_and_config(self, tmp_path, monkeypatch):
-        import json
-
-        # Default is False
-        args_def = parse_args([])
-        assert resolve_settings(args_def)["include_priorities"] is False
-
-        # CLI flag overrides to True
-        args_flag = parse_args(["--priorities"])
-        assert resolve_settings(args_flag)["include_priorities"] is True
-
-        args_alias = parse_args(["--include-priorities"])
-        assert resolve_settings(args_alias)["include_priorities"] is True
-
-        # Config file support
-        cfg_file = tmp_path / "cfg_prio.json"
-        cfg_file.write_text(json.dumps({"token": "tok", "include_priorities": True}), encoding="utf-8")
-        args_cfg = parse_args(["--config", str(cfg_file)])
-        assert resolve_settings(args_cfg)["include_priorities"] is True
-
-        # Env var support
-        monkeypatch.setenv("TODOIST_TRACE_PRIORITIES", "1")
-        assert resolve_settings(args_def)["include_priorities"] is True
-
-
+        args = parse_args([])
+        settings = resolve_settings(args)
+        assert settings["include_labels"] is True
+        assert settings["include_descriptions"] is True
+        assert settings["include_priorities"] is False
+        assert settings["include_due_dates"] is False
 

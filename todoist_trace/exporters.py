@@ -14,11 +14,12 @@ def generate_csv(
     include_labels: bool = False,
     include_descriptions: bool = False,
     include_priorities: bool = False,
+    include_due_dates: bool = False,
 ) -> str:
     """
     Generate CSV formatted text for trace records according to RFC 4180.
     Headers: top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id
-    Optional dynamic columns: priority, labels, description
+    Optional metadata columns: labels, description, priority, due_date, due_variance
     """
     output = io.StringIO()
     fieldnames = [
@@ -38,6 +39,8 @@ def generate_csv(
         fieldnames.append("description")
     if include_priorities:
         fieldnames.append("priority")
+    if include_due_dates:
+        fieldnames.extend(["due_date", "due_variance"])
 
     writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL, lineterminator="\n")
     writer.writerow(fieldnames)
@@ -60,6 +63,10 @@ def generate_csv(
             row.append(r.get("description", "") or "")
         if include_priorities:
             row.append(r.get("priority", "p4") or "p4")
+        if include_due_dates:
+            row.append(r.get("due_date", "") or "")
+            row.append(r.get("due_variance", "") or "")
+
         writer.writerow(row)
     return output.getvalue()
 
@@ -70,6 +77,7 @@ def export_csv(
     include_labels: bool = False,
     include_descriptions: bool = False,
     include_priorities: bool = False,
+    include_due_dates: bool = False,
 ) -> None:
     """Export trace records to a CSV file."""
     path = Path(output_path).expanduser()
@@ -79,6 +87,7 @@ def export_csv(
         include_labels=include_labels,
         include_descriptions=include_descriptions,
         include_priorities=include_priorities,
+        include_due_dates=include_due_dates,
     )
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
@@ -88,8 +97,9 @@ def _format_task_metadata(
     r: Dict[str, Any],
     include_labels: bool = False,
     include_priorities: bool = False,
+    include_due_dates: bool = False,
 ) -> str:
-    """Format inline badges for priority and labels."""
+    """Format inline badges for priority, labels, and due date/variance."""
     parts = []
     if include_priorities:
         prio = r.get("priority")
@@ -100,6 +110,20 @@ def _format_task_metadata(
         if lbls:
             tags = [f"@{lbl.lstrip('@')}" for lbl in lbls]
             parts.append(f"[{', '.join(tags)}]")
+    if include_due_dates:
+        due = r.get("due_date")
+        if due:
+            variance = r.get("due_variance")
+            done = r.get("date")
+            if done and variance:
+                parts.append(f"[Due: {due}, Done: {done} ({variance})]")
+            elif done:
+                parts.append(f"[Due: {due}, Done: {done}]")
+            elif variance:
+                parts.append(f"[Due: {due} ({variance})]")
+            else:
+                parts.append(f"[Due: {due}]")
+
     return (" " + " ".join(parts)) if parts else ""
 
 
@@ -124,6 +148,7 @@ def format_task_bullets(
     include_labels: bool = False,
     include_descriptions: bool = False,
     include_priorities: bool = False,
+    include_due_dates: bool = False,
 ) -> List[str]:
     """Format tasks either as nested bullet hierarchy or flat slash paths with optional metadata."""
     if task_style == "flat":
@@ -133,6 +158,7 @@ def format_task_bullets(
                 r,
                 include_labels=include_labels,
                 include_priorities=include_priorities,
+                include_due_dates=include_due_dates,
             )
             lines.append(f"- {r.get('task_path', '')}{meta}")
             if include_descriptions and r.get("description"):
@@ -170,6 +196,7 @@ def format_task_bullets(
                     node.record,
                     include_labels=include_labels,
                     include_priorities=include_priorities,
+                    include_due_dates=include_due_dates,
                 )
             res.append(f"{indent}- {node.title}{meta}")
             if include_descriptions and node.record and node.record.get("description"):
@@ -188,6 +215,7 @@ def format_records_with_sections(
     include_labels: bool = False,
     include_descriptions: bool = False,
     include_priorities: bool = False,
+    include_due_dates: bool = False,
 ) -> List[str]:
     """
     Format records, grouping by section if any records have a section.
@@ -205,6 +233,7 @@ def format_records_with_sections(
             include_labels=include_labels,
             include_descriptions=include_descriptions,
             include_priorities=include_priorities,
+            include_due_dates=include_due_dates,
         )
 
     res: List[str] = []
@@ -227,6 +256,7 @@ def format_records_with_sections(
             include_labels=include_labels,
             include_descriptions=include_descriptions,
             include_priorities=include_priorities,
+            include_due_dates=include_due_dates,
         ))
 
     sec_h_level = min(parent_h_level + 1, 6)
@@ -242,6 +272,7 @@ def format_records_with_sections(
             include_labels=include_labels,
             include_descriptions=include_descriptions,
             include_priorities=include_priorities,
+            include_due_dates=include_due_dates,
         ))
 
     return res
@@ -254,6 +285,7 @@ def generate_markdown(
     include_labels: bool = False,
     include_descriptions: bool = False,
     include_priorities: bool = False,
+    include_due_dates: bool = False,
 ) -> str:
     """
     Format trace records into Markdown grouped by date and project hierarchy.
@@ -308,6 +340,7 @@ def generate_markdown(
                         include_labels=include_labels,
                         include_descriptions=include_descriptions,
                         include_priorities=include_priorities,
+                        include_due_dates=include_due_dates,
                     ))
                     lines.append("")
 
@@ -325,6 +358,7 @@ def generate_markdown(
                         include_labels=include_labels,
                         include_descriptions=include_descriptions,
                         include_priorities=include_priorities,
+                        include_due_dates=include_due_dates,
                     ))
                     lines.append("")
 
@@ -365,6 +399,7 @@ def generate_markdown(
                             include_labels=include_labels,
                             include_descriptions=include_descriptions,
                             include_priorities=include_priorities,
+                            include_due_dates=include_due_dates,
                         ))
                         lines.append("")
                     elif node.depth > 0 and node.children:
@@ -386,6 +421,7 @@ def export_markdown(
     include_labels: bool = False,
     include_descriptions: bool = False,
     include_priorities: bool = False,
+    include_due_dates: bool = False,
 ) -> None:
     """Export trace records to a Markdown file."""
     path = Path(output_path).expanduser()
@@ -397,6 +433,7 @@ def export_markdown(
         include_labels=include_labels,
         include_descriptions=include_descriptions,
         include_priorities=include_priorities,
+        include_due_dates=include_due_dates,
     )
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)

@@ -53,6 +53,7 @@ from .resolvers import (
     SectionResolver,
     TaskHierarchyResolver,
     build_trace_records,
+    calculate_due_variance,
     format_event_datetime,
     format_priority,
 )
@@ -73,6 +74,7 @@ __all__ = [
     "TaskHierarchyResolver",
     "TraceCache",
     "build_trace_records",
+    "calculate_due_variance",
     "calculate_missing_intervals",
     "coalesce_intervals",
     "create_cache",

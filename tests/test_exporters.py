@@ -279,7 +279,7 @@ class TestExporters:
         assert "##### Sprint 1" in md
         assert "- Setup server" in md
 
-    def test_generate_csv_with_labels(self):
+    def test_generate_csv_with_extended_metadata(self):
         records = [
             {
                 "top_level_project": "Work",
@@ -292,18 +292,46 @@ class TestExporters:
                 "project_id": "p1",
                 "event_id": "e1",
                 "labels": ["urgent", "security"],
+                "description": "Fix token expiration issue\nRequires migration",
+                "priority": "p1",
+                "due_date": "2026-10-01",
+                "due_variance": "+1d overdue",
             }
         ]
-        # Without flag -> standard 9 columns
+        # 1. Default (no extended metadata)
         csv_default = generate_csv(records)
-        assert csv_default.splitlines()[0] == "top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id"
+        assert csv_default.startswith("top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id\n")
+        assert "labels" not in csv_default.splitlines()[0]
 
-        # With include_labels -> extra column
+        # 2. Individual flags
         csv_labels = generate_csv(records, include_labels=True)
         assert csv_labels.splitlines()[0] == "top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id,labels"
         assert '"urgent,security"' in csv_labels
 
-    def test_generate_markdown_with_labels(self):
+        csv_desc = generate_csv(records, include_descriptions=True)
+        assert "description" in csv_desc.splitlines()[0]
+        assert "Fix token expiration issue" in csv_desc
+
+        csv_prio = generate_csv(records, include_priorities=True)
+        assert "priority" in csv_prio.splitlines()[0]
+        assert ",p1" in csv_prio
+
+        csv_due = generate_csv(records, include_due_dates=True)
+        assert "due_date,due_variance" in csv_due.splitlines()[0]
+        assert "2026-10-01,+1d overdue" in csv_due
+
+        # 3. All fields enabled
+        csv_all = generate_csv(
+            records,
+            include_labels=True,
+            include_descriptions=True,
+            include_priorities=True,
+            include_due_dates=True,
+        )
+        header = csv_all.splitlines()[0]
+        assert header == "top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id,labels,description,priority,due_date,due_variance"
+
+    def test_generate_markdown_with_extended_metadata(self):
         records = [
             {
                 "top_level_project": "Work",
@@ -314,66 +342,73 @@ class TestExporters:
                 "task_path": "Root Task / Leaf Subtask",
                 "task_levels": ["Root Task", "Leaf Subtask"],
                 "labels": ["urgent", "ops"],
-            }
-        ]
-        md = generate_markdown(records, style="nested", task_style="nested", include_labels=True)
-        assert "- Root Task" in md
-        assert "  - Leaf Subtask [@urgent, @ops]" in md
-
-    def test_generate_csv_and_markdown_with_descriptions(self):
-        records = [
-            {
-                "top_level_project": "Work",
-                "project_path": "",
-                "section": "",
-                "date": "2026-10-02",
-                "time": "16:00:00",
-                "task_path": "Setup CI/CD",
-                "task_levels": ["Setup CI/CD"],
-                "description": "Configure GitHub Actions\nEnsure matrix build passes",
-            }
-        ]
-        # CSV with description
-        csv_out = generate_csv(records, include_descriptions=True)
-        assert "description" in csv_out.splitlines()[0]
-        assert "Configure GitHub Actions" in csv_out
-
-        # Markdown nested with description
-        md_out = generate_markdown(records, style="nested", task_style="nested", include_descriptions=True)
-        assert "- Setup CI/CD" in md_out
-        assert "  > Configure GitHub Actions" in md_out
-        assert "  > Ensure matrix build passes" in md_out
-
-        # Markdown flat with description
-        md_flat = generate_markdown(records, style="flat", task_style="flat", include_descriptions=True)
-        assert "- Setup CI/CD" in md_flat
-        assert "  > Configure GitHub Actions" in md_flat
-
-    def test_generate_csv_and_markdown_with_priorities(self):
-        records = [
-            {
-                "top_level_project": "Work",
-                "project_path": "",
-                "section": "",
-                "date": "2026-10-02",
-                "time": "17:00:00",
-                "task_path": "Urgent Security Bug",
-                "task_levels": ["Urgent Security Bug"],
-                "labels": ["sec"],
+                "description": "Important fix\nLine 2 notes",
                 "priority": "p1",
+                "due_date": "2026-10-01",
+                "due_variance": "+1d overdue",
             }
         ]
-        # CSV with priority
-        csv_out = generate_csv(records, include_priorities=True)
-        assert csv_out.splitlines()[0] == "top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id,priority"
-        assert ",p1" in csv_out
+        # Nested style
+        md_nested = generate_markdown(
+            records,
+            style="nested",
+            task_style="nested",
+            include_labels=True,
+            include_descriptions=True,
+            include_priorities=True,
+            include_due_dates=True,
+        )
+        assert "## 2026-10-02" in md_nested
+        assert "### Work" in md_nested
+        assert "- Root Task" in md_nested
+        assert "  - Leaf Subtask [p1] [@urgent, @ops] [Due: 2026-10-01, Done: 2026-10-02 (+1d overdue)]" in md_nested
+        assert "    > Important fix" in md_nested
+        assert "    > Line 2 notes" in md_nested
 
-        # Markdown nested with priority
-        md_nested = generate_markdown(records, style="nested", task_style="nested", include_priorities=True, include_labels=True)
-        assert "- Urgent Security Bug [p1] [@sec]" in md_nested
+        # Flat style
+        md_flat = generate_markdown(
+            records,
+            style="flat",
+            task_style="flat",
+            include_labels=True,
+            include_descriptions=True,
+            include_priorities=True,
+            include_due_dates=True,
+        )
+        assert "- Root Task / Leaf Subtask [p1] [@urgent, @ops] [Due: 2026-10-01, Done: 2026-10-02 (+1d overdue)]" in md_flat
+        assert "  > Important fix" in md_flat
+        assert "  > Line 2 notes" in md_flat
 
-        # Markdown flat with priority
-        md_flat = generate_markdown(records, style="flat", task_style="flat", include_priorities=True, include_labels=True)
-        assert "- Urgent Security Bug [p1] [@sec]" in md_flat
+    def test_export_files_with_metadata(self, tmp_path):
+        records = [
+            {
+                "top_level_project": "Personal",
+                "project_path": "",
+                "section": "",
+                "date": "2026-10-02",
+                "time": "10:00:00",
+                "task_path": "Taxes",
+                "labels": ["finance"],
+                "priority": "p2",
+                "description": "Check deductions",
+                "due_date": "2026-10-02",
+                "due_variance": "on time",
+            }
+        ]
+        csv_file = tmp_path / "meta.csv"
+        md_file = tmp_path / "meta.md"
 
+        export_csv(records, str(csv_file), include_labels=True, include_priorities=True)
+        export_markdown(records, str(md_file), include_labels=True, include_descriptions=True)
+
+        assert csv_file.is_file()
+        assert md_file.is_file()
+
+        csv_text = csv_file.read_text(encoding="utf-8")
+        assert "labels" in csv_text.splitlines()[0]
+        assert "finance" in csv_text
+
+        md_text = md_file.read_text(encoding="utf-8")
+        assert "[@finance]" in md_text
+        assert "> Check deductions" in md_text
 

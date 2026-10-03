@@ -210,6 +210,8 @@ def main(argv: Optional[list] = None) -> int:
     inc_labels = settings.get("include_labels", False)
     inc_desc = settings.get("include_descriptions", False)
     inc_prio = settings.get("include_priorities", False)
+    inc_due = settings.get("include_due_dates", False)
+
     out_path = settings["output"]
     out_fmt = settings["format"]
     if out_fmt == "csv":
@@ -219,6 +221,7 @@ def main(argv: Optional[list] = None) -> int:
             include_labels=inc_labels,
             include_descriptions=inc_desc,
             include_priorities=inc_prio,
+            include_due_dates=inc_due,
         )
     else:
         export_markdown(
@@ -229,6 +232,7 @@ def main(argv: Optional[list] = None) -> int:
             include_labels=inc_labels,
             include_descriptions=inc_desc,
             include_priorities=inc_prio,
+            include_due_dates=inc_due,
         )
 
     reporter.finish_export(
@@ -251,6 +255,8 @@ def main(argv: Optional[list] = None) -> int:
             if inc_labels and r.get("labels"):
                 tags_str = ", ".join(f"@{l.lstrip('@')}" for l in r["labels"])
                 extra_parts.append(f"[{tags_str}]")
+            if inc_due and r.get("due_date"):
+                extra_parts.append(f"[Due: {r['due_date']}]")
             meta_str = (" " + " ".join(extra_parts)) if extra_parts else ""
             reporter.print_text(f"  [{r['date']} {r['time']}] {full_proj}{sec_part} -> {r['task_path']}{meta_str}")
 

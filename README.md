@@ -109,7 +109,11 @@ Create `~/.todoist-trace/config.json` to store your API token and preferred defa
   "category": "all",
   "timezone": "Europe/Zurich",
   "markdown_style": "nested",
-  "task_style": "nested"
+  "task_style": "nested",
+  "include_labels": true,
+  "include_descriptions": true,
+  "include_priorities": true,
+  "include_due_dates": true
 }
 ```
 
@@ -120,6 +124,10 @@ TODOIST_API_TOKEN=0123456789abcdef0123456789abcdef01234567
 TODOIST_TRACE_FORMAT=markdown
 TODOIST_TRACE_CATEGORY=all
 TODOIST_TRACE_TIMEZONE=Europe/Zurich
+TODOIST_TRACE_LABELS=true
+TODOIST_TRACE_DESCRIPTIONS=true
+TODOIST_TRACE_PRIORITIES=true
+TODOIST_TRACE_DUE_DATES=true
 ```
 
 ---
@@ -217,6 +225,11 @@ python3 todoist_trace.py --no-cache -f markdown -o trace_live.md
 | `--quiet` | `-q` | `False` | Suppress progress updates and non-error messages. |
 | `--no-color` | | `False` | Disable ANSI colors in terminal output. |
 | `--plain` | | `False` | Use clean plain-text progress updates (no in-place cursor overwrites). |
+| `--labels` / `--include-labels` | | `False` | Include task labels in exports. |
+| `--descriptions` / `--include-descriptions` | | `False` | Include task descriptions/notes in exports. |
+| `--priorities` / `--include-priorities` | | `False` | Include task priorities (`p1`-`p4`) in exports. |
+| `--due-dates` / `--include-due-dates` | | `False` | Include original due dates and completion variance in exports. |
+| `--all-fields` | | `False` | Shorthand enabling all extended metadata fields. |
 
 ---
 
@@ -235,6 +248,21 @@ python3 todoist_trace.py --no-cache -f markdown -o trace_live.md
   - Services
     - Database
     - Auth
+```
+
+#### Extended Metadata (`--all-fields`)
+```markdown
+## 2026-09-30
+
+### work
+#### sprint-planning
+- Sprint Deliverables
+  - Client Portal [p2] [@frontend]
+  - Services
+    - Database [p1] [@infra] [Due: 2026-09-30, Done: 2026-09-30 (on time)]
+      > Run migration scripts before deploy
+    - Auth [p1] [@security, @urgent] [Due: 2026-09-29, Done: 2026-09-30 (+1d overdue)]
+      > Refresh tokens and rotate signing secret
 ```
 
 #### Flat Style (`--task-style flat`)
@@ -258,6 +286,13 @@ work,sprint-planning,Sprint 1,2026-09-30,10:00:00,Sprint Deliverables / Services
 personal,finances/taxes,,2026-09-30,14:20:00,"Submit quarterly return, Q3",,proj_99,ev_102
 ```
 
+When extended metadata fields are enabled (e.g. `--all-fields`), corresponding metadata columns are appended:
+
+```csv
+top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id,labels,description,priority,due_date,due_variance
+work,sprint-planning,Sprint 1,2026-09-30,10:00:00,Sprint Deliverables / Services / Auth,p2,p1,ev_101,"security,urgent","Refresh tokens and rotate signing secret",p1,2026-09-29,+1d overdue
+```
+
 ---
 
 ## Database Schema (`~/.todoist-trace/cache.db`)
@@ -278,6 +313,13 @@ CREATE TABLE IF NOT EXISTS sections (
     id TEXT PRIMARY KEY,
     project_id TEXT,
     name TEXT,
+    payload TEXT
+);
+
+CREATE TABLE IF NOT EXISTS labels (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    color TEXT,
     payload TEXT
 );
 

@@ -133,6 +133,19 @@ def parse_args(argv: Optional[list] = None) -> argparse.Namespace:
         default=None,
         help="Include task priorities (p1-p4) in exports (default: false)",
     )
+    parser.add_argument(
+        "--due-dates", "--include-due-dates",
+        dest="include_due_dates",
+        action="store_true",
+        default=None,
+        help="Include original due dates and completion variance in exports (default: false)",
+    )
+    parser.add_argument(
+        "--all-fields",
+        action="store_true",
+        default=False,
+        help="Include all extended metadata fields (labels, descriptions, priorities, due dates)",
+    )
     return parser.parse_args(argv)
 
 
@@ -196,33 +209,42 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
     no_color = bool(args.no_color or os.environ.get("NO_COLOR") or file_cfg.get("no_color", False))
     plain = bool(args.plain or os.environ.get("TODOIST_TRACE_PLAIN") or file_cfg.get("plain", False))
 
-    # 10. Extended metadata (labels & descriptions)
-    if args.include_labels is not None:
-        include_labels = bool(args.include_labels)
-    elif "TODOIST_TRACE_LABELS" in os.environ:
-        include_labels = os.environ["TODOIST_TRACE_LABELS"].lower() in ("1", "true", "yes")
-    elif "TODOIST_TRACE_INCLUDE_LABELS" in os.environ:
-        include_labels = os.environ["TODOIST_TRACE_INCLUDE_LABELS"].lower() in ("1", "true", "yes")
-    else:
-        include_labels = bool(file_cfg.get("include_labels", file_cfg.get("labels", False)))
+    # 10. Extended metadata fields
+    all_fields = getattr(args, "all_fields", False)
 
-    if args.include_descriptions is not None:
-        include_descriptions = bool(args.include_descriptions)
-    elif "TODOIST_TRACE_DESCRIPTIONS" in os.environ:
-        include_descriptions = os.environ["TODOIST_TRACE_DESCRIPTIONS"].lower() in ("1", "true", "yes")
-    elif "TODOIST_TRACE_INCLUDE_DESCRIPTIONS" in os.environ:
-        include_descriptions = os.environ["TODOIST_TRACE_INCLUDE_DESCRIPTIONS"].lower() in ("1", "true", "yes")
-    else:
-        include_descriptions = bool(file_cfg.get("include_descriptions", file_cfg.get("descriptions", False)))
+    def _resolve_bool_flag(cli_val: Optional[bool], env_names: list, cfg_names: list, default: bool = False) -> bool:
+        if all_fields:
+            return True
+        if cli_val is not None:
+            return bool(cli_val)
+        for env_name in env_names:
+            if env_name in os.environ:
+                return os.environ[env_name].lower() in ("1", "true", "yes")
+        for cfg_name in cfg_names:
+            if cfg_name in file_cfg:
+                return bool(file_cfg[cfg_name])
+        return default
 
-    if args.include_priorities is not None:
-        include_priorities = bool(args.include_priorities)
-    elif "TODOIST_TRACE_PRIORITIES" in os.environ:
-        include_priorities = os.environ["TODOIST_TRACE_PRIORITIES"].lower() in ("1", "true", "yes")
-    elif "TODOIST_TRACE_INCLUDE_PRIORITIES" in os.environ:
-        include_priorities = os.environ["TODOIST_TRACE_INCLUDE_PRIORITIES"].lower() in ("1", "true", "yes")
-    else:
-        include_priorities = bool(file_cfg.get("include_priorities", file_cfg.get("priorities", False)))
+    include_labels = _resolve_bool_flag(
+        getattr(args, "include_labels", None),
+        ["TODOIST_TRACE_LABELS", "TODOIST_TRACE_INCLUDE_LABELS"],
+        ["include_labels", "labels"],
+    )
+    include_descriptions = _resolve_bool_flag(
+        getattr(args, "include_descriptions", None),
+        ["TODOIST_TRACE_DESCRIPTIONS", "TODOIST_TRACE_INCLUDE_DESCRIPTIONS"],
+        ["include_descriptions", "descriptions"],
+    )
+    include_priorities = _resolve_bool_flag(
+        getattr(args, "include_priorities", None),
+        ["TODOIST_TRACE_PRIORITIES", "TODOIST_TRACE_INCLUDE_PRIORITIES"],
+        ["include_priorities", "priorities"],
+    )
+    include_due_dates = _resolve_bool_flag(
+        getattr(args, "include_due_dates", None),
+        ["TODOIST_TRACE_DUE_DATES", "TODOIST_TRACE_INCLUDE_DUE_DATES"],
+        ["include_due_dates", "due_dates"],
+    )
 
     return {
         "token": token,
@@ -244,4 +266,6 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         "include_labels": include_labels,
         "include_descriptions": include_descriptions,
         "include_priorities": include_priorities,
+        "include_due_dates": include_due_dates,
+        "all_fields": all_fields,
     }

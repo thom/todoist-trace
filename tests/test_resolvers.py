@@ -6,9 +6,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from todoist_trace.resolvers import (
+    LabelResolver,
     ProjectTreeResolver,
+    SectionResolver,
     TaskHierarchyResolver,
     build_trace_records,
+    calculate_due_variance,
+    format_priority,
 )
 
 
@@ -381,40 +385,11 @@ class TestSectionResolver:
         assert records[0]["top_level_project"] == "Work"
         assert records[0]["task_path"] == "Deploy release"
 
-    def test_build_trace_records_with_label_resolver(self):
-        from todoist_trace.resolvers import (
-            LabelResolver,
-            ProjectTreeResolver,
-            TaskHierarchyResolver,
-            build_trace_records,
-        )
-        projects = [{"id": "p1", "name": "Work", "parent_id": None}]
-        p_resolver = ProjectTreeResolver(projects)
-        t_resolver = TaskHierarchyResolver(token="dummy")
-        l_resolver = LabelResolver(preloaded_labels=[{"id": "lbl_1", "name": "urgent"}])
-
-        events = [
-            {
-                "id": "e_lbl",
-                "object_id": "t_lbl",
-                "event_date": "2026-10-02T10:00:00Z",
-                "parent_project_id": "p1",
-                "extra_data": {
-                    "content": "Hotfix issue",
-                    "labels": ["lbl_1", "backend"],
-                },
-            }
-        ]
-        records = build_trace_records(events, p_resolver, t_resolver, label_resolver=l_resolver)
-        assert len(records) == 1
-        assert records[0]["labels"] == ["urgent", "backend"]
-
 
 class TestLabelResolver:
     """Test suite for LabelResolver."""
 
     def test_resolve_label_by_id_and_name(self):
-        from todoist_trace.resolvers import LabelResolver
         preloaded = [
             {"id": "lbl_1", "name": "work"},
             {"id": "lbl_2", "name": "urgent"},
@@ -427,7 +402,6 @@ class TestLabelResolver:
         assert resolver.resolve_label("custom_name") == "custom_name"
 
     def test_resolve_labels_list(self):
-        from todoist_trace.resolvers import LabelResolver
         preloaded = {"lbl_1": {"name": "frontend"}, "lbl_2": {"name": "backend"}}
         resolver = LabelResolver(preloaded_labels=preloaded)
 
@@ -436,35 +410,16 @@ class TestLabelResolver:
         assert resolver.resolve_labels([]) == []
 
     def test_format_tags(self):
-        from todoist_trace.resolvers import LabelResolver
         resolver = LabelResolver()
         assert resolver.format_tags(["work", "urgent"]) == "[@work, @urgent]"
         assert resolver.format_tags(["@already_prefixed"]) == "[@already_prefixed]"
         assert resolver.format_tags([]) == ""
 
-    def test_resolve_event_with_description(self):
-        from todoist_trace.resolvers import TaskHierarchyResolver
-        resolver = TaskHierarchyResolver(token="dummy")
-        event = {
-            "id": "e_desc",
-            "object_id": "t_desc",
-            "event_date": "2026-10-02T10:00:00Z",
-            "parent_project_id": "p1",
-            "extra_data": {
-                "content": "Write docs",
-                "description": "Document CLI options and export formats",
-            },
-        }
-        res = resolver.resolve(event)
-        assert res["task_path"] == "Write docs"
-        assert res["description"] == "Document CLI options and export formats"
 
-
-class TestPriority:
-    """Test suite for format_priority and priority resolving."""
+class TestPriorityAndDueVariance:
+    """Test suite for format_priority and calculate_due_variance."""
 
     def test_format_priority(self):
-        from todoist_trace.resolvers import format_priority
         assert format_priority(4) == "p1"
         assert format_priority("4") == "p1"
         assert format_priority(3) == "p2"
@@ -475,22 +430,110 @@ class TestPriority:
         assert format_priority(None) == "p4"
         assert format_priority("invalid") == "p4"
 
-    def test_resolve_event_with_priority(self):
-        from todoist_trace.resolvers import TaskHierarchyResolver
+    def test_calculate_due_variance_on_time(self):
+        res = calculate_due_variance("2026-10-01", "2026-10-01")
+        assert res["due_date"] == "2026-10-01"
+        assert res["days_variance"] == 0
+        assert res["status"] == "on_time"
+        assert res["variance_desc"] == "on time"
+
+    def test_calculate_due_variance_overdue(self):
+        res = calculate_due_variance("2026-09-29", "2026-10-01")
+        assert res["due_date"] == "2026-09-29"
+        assert res["days_variance"] == 2
+        assert res["status"] == "overdue"
+        assert res["variance_desc"] == "+2d overdue"
+
+    def test_calculate_due_variance_early(self):
+        res = calculate_due_variance("2026-10-05", "2026-10-01")
+        assert res["due_date"] == "2026-10-05"
+        assert res["days_variance"] == -4
+        assert res["status"] == "early"
+        assert res["variance_desc"] == "-4d early"
+
+    def test_calculate_due_variance_was_overdue_flag(self):
+        # Even if dates are same day, was_overdue flag marks it overdue
+        res = calculate_due_variance("2026-10-01", "2026-10-01", was_overdue=True)
+        assert res["status"] == "overdue"
+        assert res["variance_desc"] == "+1d overdue"
+
+    def test_calculate_due_variance_undated_and_invalid(self):
+        res_none = calculate_due_variance(None, "2026-10-01")
+        assert res_none["status"] == "undated"
+        assert res_none["variance_desc"] == ""
+        assert res_none["due_date"] == ""
+
+        res_inv = calculate_due_variance("not-a-date", "2026-10-01")
+        assert res_inv["status"] == "undated"
+
+
+class TestExtendedMetadataResolving:
+    """Test suite for resolving extended metadata in task resolver and trace records."""
+
+    def test_resolve_event_with_extra_data_metadata(self):
         resolver = TaskHierarchyResolver(token="dummy")
         event = {
-            "id": "e_prio",
-            "object_id": "t_prio",
-            "event_date": "2026-10-02T10:00:00Z",
+            "id": "e_meta",
+            "object_id": "t_meta",
+            "event_date": "2026-10-02T15:30:00Z",
             "parent_project_id": "p1",
             "extra_data": {
-                "content": "Emergency patch",
+                "content": "Prepare release",
+                "description": "Ensure changelog is updated",
                 "priority": 4,
+                "labels": ["urgent", "release"],
+                "due_date": "2026-10-01",
+                "was_overdue": True,
             },
         }
         res = resolver.resolve(event)
-        assert res["task_path"] == "Emergency patch"
+        assert res["task_path"] == "Prepare release"
+        assert res["description"] == "Ensure changelog is updated"
         assert res["priority"] == "p1"
         assert res["raw_priority"] == 4
+        assert res["labels"] == ["urgent", "release"]
+        assert res["due_date"] == "2026-10-01"
+        assert res["due_status"] == "overdue"
+        assert "+1d overdue" in res["due_variance"]
 
+    def test_build_trace_records_full_extended_metadata(self):
+        projects = [{"id": "p1", "name": "Work", "parent_id": None}]
+        p_resolver = ProjectTreeResolver(projects)
+        t_resolver = TaskHierarchyResolver(token="dummy")
+        s_resolver = SectionResolver(preloaded_sections=[{"id": "sec_1", "name": "Sprint 1"}])
+        l_resolver = LabelResolver(preloaded_labels=[{"id": "l1", "name": "backend"}])
+
+        events = [
+            {
+                "id": "e10",
+                "object_id": "t10",
+                "event_date": "2026-10-02T12:00:00Z",
+                "parent_project_id": "p1",
+                "extra_data": {
+                    "content": "Database migration",
+                    "section_id": "sec_1",
+                    "description": "Run alembic upgrade head",
+                    "priority": 3,
+                    "labels": ["l1", "db"],
+                    "due_date": "2026-10-02",
+                },
+            }
+        ]
+        records = build_trace_records(
+            events,
+            p_resolver,
+            t_resolver,
+            section_resolver=s_resolver,
+            label_resolver=l_resolver,
+        )
+        assert len(records) == 1
+        r = records[0]
+        assert r["top_level_project"] == "Work"
+        assert r["section"] == "Sprint 1"
+        assert r["task_path"] == "Database migration"
+        assert r["description"] == "Run alembic upgrade head"
+        assert r["priority"] == "p2"
+        assert r["labels"] == ["backend", "db"]
+        assert r["due_date"] == "2026-10-02"
+        assert r["due_variance"] == "on time"
 
