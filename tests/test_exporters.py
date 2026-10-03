@@ -41,8 +41,8 @@ class TestExporters:
         assert "top_level_project,project_path,section,date" in content
         assert "ev_001" in content
 
-    def test_generate_markdown_nested_style(self, sample_exporter_records):
-        md_out = generate_markdown(sample_exporter_records, style="nested")
+    def test_generate_markdown_hierarchical_headings(self, sample_exporter_records):
+        md_out = generate_markdown(sample_exporter_records)
 
         # Check date heading
         assert "## 2026-09-15" in md_out
@@ -60,28 +60,19 @@ class TestExporters:
         assert "### personal" in md_out
         assert '- Buy "groceries", apples & milk' in md_out
 
-    def test_generate_markdown_flat_style(self, sample_exporter_records):
+    def test_generate_markdown_backward_compatibility_style_arg(self, sample_exporter_records):
+        # Even if legacy style="flat" is passed, clean hierarchical headings are produced
         md_out = generate_markdown(sample_exporter_records, style="flat")
 
-        # Check date heading
         assert "## 2026-09-15" in md_out
-
-        # Check flat project path heading
         assert "### work-areas" in md_out
-        assert "#### admin/email" in md_out
-        assert "#### admin\n" not in md_out
-
-        # Check task bullets
+        assert "#### admin" in md_out
+        assert "##### email" in md_out
         assert "- Check inbox filters / triage / urgent" in md_out
-        assert "- Reply to vendor requests" in md_out
-
-        # Check root project without sub-heading
-        assert "### personal" in md_out
-        assert '- Buy "groceries", apples & milk' in md_out
 
     def test_export_markdown_file_creation(self, sample_exporter_records, tmp_path):
         out_file = tmp_path / "nested" / "export.md"
-        export_markdown(sample_exporter_records, str(out_file), style="nested")
+        export_markdown(sample_exporter_records, str(out_file))
 
         assert out_file.is_file()
         content = out_file.read_text(encoding="utf-8")
@@ -234,7 +225,7 @@ class TestExporters:
                 "event_id": "ev_2",
             },
         ]
-        md = generate_markdown(records, style="nested")
+        md = generate_markdown(records)
         assert "### Work" in md
         assert "#### Infrastructure" in md
         # General maintenance is unsectioned and appears directly under Infrastructure
@@ -243,7 +234,7 @@ class TestExporters:
         assert "##### Sprint 1" in md
         assert "- Setup server" in md
 
-    def test_generate_markdown_with_sections_flat_style(self):
+    def test_generate_markdown_with_sections_multiple_groups(self):
         records = [
             {
                 "top_level_project": "Work",
@@ -268,7 +259,7 @@ class TestExporters:
                 "event_id": "ev_0",
             },
         ]
-        md = generate_markdown(records, style="flat")
+        md = generate_markdown(records)
         assert "### Work" in md
         # Quick hits is under top level Work (h3 + 1 = h4)
         assert "#### Quick Hits" in md
@@ -347,36 +338,19 @@ class TestExporters:
                 "due_variance": "+1d overdue",
             }
         ]
-        # Nested style
-        md_nested = generate_markdown(
+        md_out = generate_markdown(
             records,
-            style="nested",
-            task_style="nested",
             include_labels=True,
             include_descriptions=True,
             include_priorities=True,
             include_due_dates=True,
         )
-        assert "## 2026-10-02" in md_nested
-        assert "### Work" in md_nested
-        assert "- Root Task" in md_nested
-        assert "  - Leaf Subtask [p1] [@urgent, @ops] [Due: 2026-10-01, Done: 2026-10-02 (+1d overdue)]" in md_nested
-        assert "    > Important fix" in md_nested
-        assert "    > Line 2 notes" in md_nested
-
-        # Flat project heading style (tasks remain hierarchical)
-        md_flat = generate_markdown(
-            records,
-            style="flat",
-            include_labels=True,
-            include_descriptions=True,
-            include_priorities=True,
-            include_due_dates=True,
-        )
-        assert "- Root Task" in md_flat
-        assert "  - Leaf Subtask [p1] [@urgent, @ops] [Due: 2026-10-01, Done: 2026-10-02 (+1d overdue)]" in md_flat
-        assert "    > Important fix" in md_flat
-        assert "    > Line 2 notes" in md_flat
+        assert "## 2026-10-02" in md_out
+        assert "### Work" in md_out
+        assert "- Root Task" in md_out
+        assert "  - Leaf Subtask [p1] [@urgent, @ops] [Due: 2026-10-01, Done: 2026-10-02 (+1d overdue)]" in md_out
+        assert "    > Important fix" in md_out
+        assert "    > Line 2 notes" in md_out
 
     def test_export_files_with_metadata(self, tmp_path):
         records = [
@@ -455,8 +429,10 @@ class TestExporters:
         assert "timeline-chart" in html_out
         assert "project-bars" in html_out
         assert "table-body" in html_out
-        assert "tab-pstyle-nested" in html_out
-        assert "tab-pstyle-collapsed" in html_out
+        assert "btn-toggle-accordions" in html_out
+        assert "toggleAllAccordions" in html_out
+        assert "tab-pstyle-nested" not in html_out
+        assert "tab-pstyle-collapsed" not in html_out
         assert "tab-style-flat" not in html_out
         assert "buildTaskTree" in html_out
         assert "renderTaskTree" in html_out
@@ -518,11 +494,13 @@ class TestExporters:
         html_out = generate_html(records, title="Project Hierarchy Test")
         assert "buildProjectTree" in html_out
         assert "renderProjectNode" in html_out
-        assert "renderCollapsedProjectGroups" in html_out
         assert "renderSubprojectHierarchy" in html_out
-        assert "tab-pstyle-nested" in html_out
-        assert "tab-pstyle-collapsed" in html_out
-        assert "setProjectStyle" in html_out
+        assert "btn-toggle-accordions" in html_out
+        assert "toggleAllAccordions" in html_out
+        assert "renderCollapsedProjectGroups" not in html_out
+        assert "tab-pstyle-nested" not in html_out
+        assert "tab-pstyle-collapsed" not in html_out
+        assert "setProjectStyle" not in html_out
         assert ".top-project-group" in html_out
         assert ".subproject-group" in html_out
         assert "alpha-service" in html_out

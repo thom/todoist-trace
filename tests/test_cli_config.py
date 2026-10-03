@@ -17,7 +17,6 @@ class TestCLIAndSettings:
             "-e", "2026-09-30",
             "-o", "custom.md",
             "-t", "test_token_123",
-            "--markdown-style", "flat",
         ])
         settings = resolve_settings(args)
 
@@ -27,7 +26,6 @@ class TestCLIAndSettings:
         assert settings["end_date"] == "2026-09-30"
         assert settings["output"] == "custom.md"
         assert settings["token"] == "test_token_123"
-        assert settings["markdown_style"] == "flat"
 
     def test_md_alias_normalizes_to_markdown(self):
         args = parse_args(["-f", "md"])

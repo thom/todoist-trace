@@ -317,7 +317,6 @@ def run_export(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
         export_markdown(
             filtered_records,
             out_path,
-            style=settings["markdown_style"],
             include_labels=inc_labels,
             include_descriptions=inc_desc,
             include_priorities=inc_prio,
@@ -329,7 +328,6 @@ def run_export(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
         matched_count=len(filtered_records),
         total_count=total_count,
         out_fmt=out_fmt,
-        style_desc=settings["markdown_style"] if out_fmt == "markdown" else "",
     )
 
     if not settings.get("quiet") and filtered_records:
@@ -392,7 +390,7 @@ def main(argv: Optional[list] = None) -> int:
 
     if command in ("export", "run"):
         if settings.get("format") == "markdown":
-            fmt_desc = f"MARKDOWN ({settings.get('markdown_style', 'nested')})"
+            fmt_desc = "MARKDOWN"
         elif settings.get("format") == "html":
             fmt_desc = "HTML (Interactive Dashboard)"
         else:

@@ -1059,14 +1059,8 @@ def generate_html(
 
       <div class="filter-status">
         <span id="filter-counter">Showing {total_records} of {total_records} tasks</span>
-        <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <span style="font-size: 12px; color: var(--text-dim);">Projects:</span>
-            <div class="view-switcher">
-              <button class="view-tab active" id="tab-pstyle-nested" onclick="setProjectStyle('nested')">⊞ Nested</button>
-              <button class="view-tab" id="tab-pstyle-collapsed" onclick="setProjectStyle('collapsed')">≡ Collapsed Path</button>
-            </div>
-          </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button class="btn btn-sm" id="btn-toggle-accordions" onclick="toggleAllAccordions()">Collapse All</button>
         </div>
       </div>
     </div>
@@ -1149,27 +1143,29 @@ def generate_html(
       setTheme(current === 'dark' ? 'light' : 'dark');
     }}
 
-    // Project Style Management (Nested Hierarchy vs Collapsed Path)
-    let currentProjectStyle = localStorage.getItem('todoist-trace-project-style') || 'nested';
-
-    function initProjectStyle() {{
-      setProjectStyle(currentProjectStyle, false);
+    // Accordion Management (Expand All / Collapse All)
+    function toggleAllAccordions() {{
+      const groups = document.querySelectorAll('.view-section.active .day-group');
+      if (!groups.length) return;
+      const hasExpanded = Array.from(groups).some(g => !g.classList.contains('collapsed'));
+      const shouldCollapse = hasExpanded;
+      groups.forEach(g => {{
+        g.classList.toggle('collapsed', shouldCollapse);
+      }});
+      updateAccordionButton();
     }}
 
-    function setProjectStyle(style, shouldReRender = true) {{
-      currentProjectStyle = style;
-      localStorage.setItem('todoist-trace-project-style', style);
-      const btnNested = document.getElementById('tab-pstyle-nested');
-      const btnCollapsed = document.getElementById('tab-pstyle-collapsed');
-      if (btnNested && btnCollapsed) {{
-        btnNested.classList.toggle('active', style === 'nested');
-        btnCollapsed.classList.toggle('active', style === 'collapsed');
+    function updateAccordionButton() {{
+      const btn = document.getElementById('btn-toggle-accordions');
+      if (!btn) return;
+      const groups = document.querySelectorAll('.view-section.active .day-group');
+      if (!groups.length) {{
+        btn.style.display = 'none';
+        return;
       }}
-      if (shouldReRender) {{
-        renderTimelineView();
-        renderProjectsView();
-        renderTableView();
-      }}
+      btn.style.display = 'inline-flex';
+      const hasExpanded = Array.from(groups).some(g => !g.classList.contains('collapsed'));
+      btn.textContent = hasExpanded ? 'Collapse All' : 'Expand All';
     }}
 
     // View Switching
@@ -1180,6 +1176,7 @@ def generate_html(
       document.querySelectorAll('.view-section').forEach(s => {{
         s.classList.toggle('active', s.id === `view-${{viewName}}`);
       }});
+      updateAccordionButton();
     }}
 
     // Filter Options Initialization
@@ -1361,11 +1358,13 @@ def generate_html(
       }});
 
       container.innerHTML = html;
+      updateAccordionButton();
     }}
 
     function toggleDayAccordion(el) {{
       const group = el.closest('.day-group');
       if (group) group.classList.toggle('collapsed');
+      updateAccordionButton();
     }}
 
     // Hierarchical Task Tree Resolution
@@ -1635,56 +1634,9 @@ def generate_html(
       return html;
     }}
 
-    function renderCollapsedProjectGroups(records) {{
-      const pathMap = {{}};
-      records.forEach(r => {{
-        const p = r.project_path || '';
-        if (!pathMap[p]) pathMap[p] = [];
-        pathMap[p].push(r);
-      }});
-
-      let html = '';
-      if (pathMap['']) {{
-        if (Object.keys(pathMap).length > 1) {{
-          html += `
-            <div style="font-size: 11px; font-weight: 600; color: var(--text-dim); margin-bottom: 4px;">
-              (Direct Tasks)
-            </div>
-          `;
-        }}
-        html += renderTasksWithSections(pathMap['']);
-      }}
-
-      const sortedPaths = Object.keys(pathMap).filter(Boolean).sort();
-      for (const path of sortedPaths) {{
-        const recs = pathMap[path];
-        const displayPath = path.replace(/\\s*\\/\\s*/g, ' › ');
-        html += `
-          <div class="subproject-group depth-0">
-            <div class="subproject-header">
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <span class="subproject-icon">${{ICONS.hash}}</span>
-                <span class="subproject-title">${{escapeHtml(displayPath)}}</span>
-              </div>
-              <span class="subproject-count-badge">${{recs.length}} task${{recs.length === 1 ? '' : 's'}}</span>
-            </div>
-            <div class="subproject-content">
-              ${{renderTasksWithSections(recs)}}
-            </div>
-          </div>
-        `;
-      }}
-
-      return html;
-    }}
-
     function renderSubprojectHierarchy(topRecords) {{
-      if (currentProjectStyle === 'collapsed') {{
-        return renderCollapsedProjectGroups(topRecords);
-      }} else {{
-        const projectTree = buildProjectTree(topRecords);
-        return renderProjectNode(projectTree, 0);
-      }}
+      const projectTree = buildProjectTree(topRecords);
+      return renderProjectNode(projectTree, 0);
     }}
 
     function filterByTag(tag) {{
@@ -1699,6 +1651,7 @@ def generate_html(
 
       if (filteredRecords.length === 0) {{
         container.innerHTML = '<div class="empty-state">No matching tasks found.</div>';
+        updateAccordionButton();
         return;
       }}
 
@@ -1733,6 +1686,7 @@ def generate_html(
         `;
       }}
       container.innerHTML = html;
+      updateAccordionButton();
     }}
 
     // Render Table View
@@ -2034,7 +1988,6 @@ def generate_html(
     // Window Init
     window.addEventListener('DOMContentLoaded', () => {{
       initTheme();
-      initProjectStyle();
       initFilterDropdowns();
       applyFilters();
     }});

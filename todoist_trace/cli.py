@@ -110,12 +110,6 @@ def _add_export_only_arguments(parser: argparse.ArgumentParser) -> None:
         help="Output file path (default: todoist_trace_export.csv, .md, or .html)",
     )
     parser.add_argument(
-        "--markdown-style",
-        choices=["nested", "flat"],
-        default=None,
-        help="Markdown project heading style: nested (#### admin / ##### email) or flat (#### admin/email) (default: nested)",
-    )
-    parser.add_argument(
         "--labels", "--include-labels",
         dest="include_labels",
         action="store_true",
@@ -260,16 +254,13 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
     # 3. Category
     category = (getattr(args, "category", None) or os.environ.get("TODOIST_TRACE_CATEGORY") or file_cfg.get("category") or "all").lower()
 
-    # 4. Markdown Style
-    markdown_style = (getattr(args, "markdown_style", None) or os.environ.get("TODOIST_TRACE_MARKDOWN_STYLE") or file_cfg.get("markdown_style") or "nested").lower()
-
-    # 5. Dates
+    # 4. Dates
     start_date = getattr(args, "start_date", None) or os.environ.get("TODOIST_TRACE_START_DATE") or file_cfg.get("start_date")
     end_date = getattr(args, "end_date", None) or os.environ.get("TODOIST_TRACE_END_DATE") or file_cfg.get("end_date")
     if start_date and end_date and start_date > end_date:
         raise ValueError(f"Start date ({start_date}) cannot be after end date ({end_date}).")
 
-    # 6. Output path
+    # 5. Output path
     output = getattr(args, "output", None) or os.environ.get("TODOIST_TRACE_OUTPUT") or file_cfg.get("output")
     if not output:
         if output_format == "csv":
@@ -279,7 +270,7 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         else:
             output = "todoist_trace_export.md"
 
-    # 7. Cache settings
+    # 6. Cache settings
     cache_enabled = not getattr(args, "no_cache", False) and file_cfg.get("cache_enabled", True)
     raw_cache = getattr(args, "cache_file", None) or file_cfg.get("cache_file")
     if raw_cache:
@@ -292,16 +283,16 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         cache_file = str(DEFAULT_CACHE_PATH)
     refresh = getattr(args, "refresh", False)
 
-    # 8. Timezone
+    # 7. Timezone
     raw_tz = getattr(args, "timezone", None) or os.environ.get("TODOIST_TRACE_TIMEZONE") or file_cfg.get("timezone") or "local"
     tz = resolve_timezone(raw_tz)
 
-    # 9. Terminal output & progress
+    # 8. Terminal output & progress
     quiet = bool(getattr(args, "quiet", False) or os.environ.get("TODOIST_TRACE_QUIET") or file_cfg.get("quiet", False))
     no_color = bool(getattr(args, "no_color", False) or os.environ.get("NO_COLOR") or file_cfg.get("no_color", False))
     plain = bool(getattr(args, "plain", False) or os.environ.get("TODOIST_TRACE_PLAIN") or file_cfg.get("plain", False))
 
-    # 10. Extended metadata fields
+    # 9. Extended metadata fields
     all_fields = getattr(args, "all_fields", False)
 
     def _resolve_bool_flag(cli_val: Optional[bool], env_names: list, cfg_names: list, default: bool = False) -> bool:
@@ -343,7 +334,6 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         "token": token,
         "format": output_format,
         "category": category,
-        "markdown_style": markdown_style,
         "start_date": start_date,
         "end_date": end_date,
         "output": output,

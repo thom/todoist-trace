@@ -265,7 +265,7 @@ def format_records_with_sections(
 
 def generate_markdown(
     records: List[Dict[str, Any]],
-    style: str = "nested",
+    style: Optional[str] = "nested",
     include_labels: bool = False,
     include_descriptions: bool = False,
     include_priorities: bool = False,
@@ -274,7 +274,6 @@ def generate_markdown(
 ) -> str:
     """
     Format trace records into Markdown grouped by date and project hierarchy.
-    style: 'nested' (progressive headings) or 'flat' (slash-separated heading)
     """
     if not records:
         return ""
@@ -306,90 +305,54 @@ def generate_markdown(
         for top_proj, proj_records in top_projects.items():
             lines.append(f"### {top_proj}")
 
-            if style == "flat":
-                # Group by project_path
-                paths_map: Dict[str, List[Dict[str, Any]]] = {}
-                for pr in proj_records:
-                    p_path = pr.get("project_path") or ""
-                    if p_path not in paths_map:
-                        paths_map[p_path] = []
-                    paths_map[p_path].append(pr)
+            class Node:
+                def __init__(self, name: str = "", depth: int = 0):
+                    self.name = name
+                    self.depth = depth
+                    self.records: List[Dict[str, Any]] = []
+                    self.children: Dict[str, "Node"] = {}
 
-                # 1. Direct tasks under top_level_project (empty project_path)
-                if "" in paths_map:
+            root_node = Node(name=top_proj, depth=0)
+            for pr in proj_records:
+                levels = pr.get("project_levels")
+                if not levels:
+                    proj_path = (pr.get("project_path") or "").strip()
+                    levels = [p.strip() for p in proj_path.split("/") if p.strip()] if proj_path else []
+                curr = root_node
+                for idx, level_name in enumerate(levels):
+                    if level_name not in curr.children:
+                        curr.children[level_name] = Node(name=level_name, depth=idx + 1)
+                    curr = curr.children[level_name]
+                curr.records.append(pr)
+
+            def render_nested_node(node: Node) -> None:
+                if node.depth == 0 and not node.records and node.children:
+                    lines.append("")
+
+                if node.depth > 0:
+                    h_level = min(3 + node.depth, 6)
+                    hashes = "#" * h_level
+                    lines.append(f"{hashes} {node.name}")
+                else:
+                    h_level = 3
+
+                if node.records:
                     lines.extend(format_records_with_sections(
-                        paths_map[""],
-                        parent_h_level=3,
+                        node.records,
+                        parent_h_level=h_level,
                         include_labels=include_labels,
                         include_descriptions=include_descriptions,
                         include_priorities=include_priorities,
                         include_due_dates=include_due_dates,
                     ))
                     lines.append("")
-
-                # 2. Sub-projects
-                for p_path, recs in paths_map.items():
-                    if p_path == "":
-                        continue
-                    if "" not in paths_map and len(lines) > 0 and lines[-1] == f"### {top_proj}":
-                        lines.append("")
-                    lines.append(f"#### {p_path}")
-                    lines.extend(format_records_with_sections(
-                        recs,
-                        parent_h_level=4,
-                        include_labels=include_labels,
-                        include_descriptions=include_descriptions,
-                        include_priorities=include_priorities,
-                        include_due_dates=include_due_dates,
-                    ))
+                elif node.depth > 0 and node.children:
                     lines.append("")
 
-            else:  # nested style
-                class Node:
-                    def __init__(self, name: str = "", depth: int = 0):
-                        self.name = name
-                        self.depth = depth
-                        self.records: List[Dict[str, Any]] = []
-                        self.children: Dict[str, "Node"] = {}
+                for child in node.children.values():
+                    render_nested_node(child)
 
-                root_node = Node(name=top_proj, depth=0)
-                for pr in proj_records:
-                    levels = pr.get("project_levels") or []
-                    curr = root_node
-                    for idx, level_name in enumerate(levels):
-                        if level_name not in curr.children:
-                            curr.children[level_name] = Node(name=level_name, depth=idx + 1)
-                        curr = curr.children[level_name]
-                    curr.records.append(pr)
-
-                def render_nested_node(node: Node) -> None:
-                    if node.depth == 0 and not node.records and node.children:
-                        lines.append("")
-
-                    if node.depth > 0:
-                        h_level = min(3 + node.depth, 6)
-                        hashes = "#" * h_level
-                        lines.append(f"{hashes} {node.name}")
-                    else:
-                        h_level = 3
-
-                    if node.records:
-                        lines.extend(format_records_with_sections(
-                            node.records,
-                            parent_h_level=h_level,
-                            include_labels=include_labels,
-                            include_descriptions=include_descriptions,
-                            include_priorities=include_priorities,
-                            include_due_dates=include_due_dates,
-                        ))
-                        lines.append("")
-                    elif node.depth > 0 and node.children:
-                        lines.append("")
-
-                    for child in node.children.values():
-                        render_nested_node(child)
-
-                render_nested_node(root_node)
+            render_nested_node(root_node)
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -397,7 +360,7 @@ def generate_markdown(
 def export_markdown(
     records: List[Dict[str, Any]],
     output_path: str,
-    style: str = "nested",
+    style: Optional[str] = "nested",
     include_labels: bool = False,
     include_descriptions: bool = False,
     include_priorities: bool = False,

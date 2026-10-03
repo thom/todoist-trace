@@ -114,7 +114,6 @@ Create `~/.todoist-trace/config.json` to store your API token and preferred defa
   "format": "markdown",
   "category": "all",
   "timezone": "Europe/Zurich",
-  "markdown_style": "nested",
   "include_labels": true,
   "include_descriptions": true,
   "include_priorities": true,
@@ -200,9 +199,6 @@ python3 todoist_trace.py export -f markdown -s 2026-09-02 -e 2026-10-02 --all-fi
 # Export work projects to CSV:
 python3 todoist_trace.py export -c work -f csv -o work_activities.csv
 
-# Export with flat project headings:
-python3 todoist_trace.py export -f markdown --markdown-style flat -o flat_report.md
-
 # Generate interactive HTML dashboard with charts and filters:
 python3 todoist_trace.py export -f html --all-fields -o activity_dashboard.html
 ```
@@ -278,7 +274,6 @@ python3 todoist_trace.py -s 2026-09-01 -f markdown -o monthly.md
 | `--format` | `-f` | `csv` | Output format: `csv`, `markdown` / `md`, or `html`. |
 | `--output` | `-o` | Auto | Output file path (default: `todoist_trace_export.csv`, `.md`, or `.html`). |
 | `--category` | `-c` | `all` | Top-level project filter: `work`, `personal`, or `all`. |
-| `--markdown-style` | | `nested` | Markdown project heading style: `nested` (`#### admin / ##### email`) or `flat` (`#### admin/email`). |
 | `--labels` / `--include-labels` | | `False` | Include task labels in exports. |
 | `--descriptions` / `--include-descriptions` | | `False` | Include task descriptions/notes in exports. |
 | `--priorities` / `--include-priorities` | | `False` | Include task priorities (`p1`-`p4`) in exports. |
