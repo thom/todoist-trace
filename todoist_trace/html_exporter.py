@@ -619,23 +619,56 @@ def generate_html(
 
     /* Section Group inside Project */
     .project-section-group {{
-      margin-top: 8px;
-      margin-bottom: 4px;
+      margin-top: 10px;
+      margin-bottom: 6px;
+      padding-left: 10px;
+      border-left: 2px solid var(--accent-light);
     }}
 
     .project-section-header {{
       display: flex;
       align-items: center;
-      gap: 6px;
+      justify-content: space-between;
+      gap: 8px;
       margin-bottom: 6px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--border-subtle);
+    }}
+
+    .project-section-title-wrap {{
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }}
+
+    .section-icon {{
+      font-size: 11px;
+      color: var(--accent);
+      opacity: 0.9;
+    }}
+
+    .section-name {{
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }}
+
+    .section-count-badge {{
+      font-size: 10px;
+      font-weight: 500;
+      padding: 1px 6px;
+      border-radius: 10px;
+      background-color: var(--bg-hover);
+      color: var(--text-dim);
     }}
 
     .section-tag {{
       font-size: 11px;
-      font-weight: 600;
-      padding: 1px 7px;
+      font-weight: 500;
+      padding: 1px 6px;
       border-radius: 4px;
       background-color: var(--bg-hover);
+      border: 1px solid var(--border-subtle);
       color: var(--text-muted);
     }}
 
@@ -1552,8 +1585,11 @@ def generate_html(
         html += `
           <div class="project-section-group">
             <div class="project-section-header">
-              <span class="section-tag">§ ${{escapeHtml(sec)}}</span>
-              <span style="font-size: 11px; color: var(--text-dim);">${{recs.length}} tasks</span>
+              <div class="project-section-title-wrap">
+                <span class="section-icon">▤</span>
+                <span class="section-name">${{renderMarkdown(sec, true)}}</span>
+              </div>
+              <span class="section-count-badge">${{recs.length}} task${{recs.length === 1 ? '' : 's'}}</span>
             </div>
             ${{currentTaskStyle === 'nested' ? renderTaskTree(buildTaskTree(recs), 0) : recs.map(renderFlatTaskItem).join('')}}
           </div>
@@ -1744,7 +1780,7 @@ def generate_html(
           <tr>
             <td style="font-family: monospace;">${{escapeHtml(r.date)}} ${{escapeHtml(r.time || '')}}</td>
             <td><span class="badge" style="background:var(--bg-hover);">${{escapeHtml(r.top_level_project || '-')}}</span></td>
-            <td>${{escapeHtml(projDisplay)}}${{r.section ? ` <span class="section-tag">${{escapeHtml(r.section)}}</span>` : ''}}</td>
+            <td>${{escapeHtml(projDisplay)}}${{r.section ? ` <span class="section-tag"><span style="color:var(--accent);opacity:0.8;margin-right:3px;">▤</span>${{renderMarkdown(r.section, true)}}</span>` : ''}}</td>
             <td>
               ${{taskCellContent}}
               ${{r.description ? `<div style="font-size:11px; color:var(--text-muted); margin-top:3px;">${{renderMarkdown(r.description)}}</div>` : ''}}
