@@ -444,7 +444,7 @@ def run_hierarchy(settings: Dict[str, Any], reporter: FancyProgressReporter, cac
                         path_str = reporter.style.cyan("(Root in hierarchy.json)")
                     else:
                         unassigned_count += 1
-                        path_str = reporter.style.yellow("(Unassigned -> archived)")
+                        path_str = reporter.style.yellow("(Unassigned -> archives)")
                 else:
                     path_str = reporter.style.dim("(Root Project)")
 

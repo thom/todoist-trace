@@ -242,16 +242,16 @@ class TestCacheAndResolverIntegration:
         assert res_active["top_level_project"] == "core-platform"
         assert res_active["project_path"] == ""
 
-        # Unassigned archived project resolves under "archived"
+        # Unassigned archived project resolves under "archives"
         res_arch = resolver.resolve("syn_p99")
-        assert res_arch["top_level_project"] == "archived"
+        assert res_arch["top_level_project"] == "archives"
         assert res_arch["project_path"] == "legacy-experiment"
         assert res_arch["project_levels"] == ["legacy-experiment"]
 
         # In store resolve_project_chain (with live map) as well
         live_map = {p["id"]: p for p in projects}
         top, path, levels = store.resolve_project_chain("syn_p99", live_projects_by_id=live_map)
-        assert top == "archived"
+        assert top == "archives"
         assert path == "legacy-experiment"
         assert levels == ["legacy-experiment"]
 
@@ -259,7 +259,7 @@ class TestCacheAndResolverIntegration:
         store.set_parent("syn_p99", None, name="legacy-experiment")
         resolver_explicit = ProjectTreeResolver(projects, hierarchy_store=store)
         res_explicit = resolver_explicit.resolve("syn_p99")
-        # Since it IS listed in project_hierarchy.json, it is not grouped under archived
+        # Since it IS listed in project_hierarchy.json, it is not grouped under archives
         assert res_explicit["top_level_project"] == "legacy-experiment"
         assert res_explicit["project_path"] == ""
 
@@ -276,7 +276,7 @@ class TestCacheAndResolverIntegration:
         records = [
             {"top_level_project": "work", "task_path": "Task 1", "date": "2026-09-10"},
             {"top_level_project": "personal", "task_path": "Task 2", "date": "2026-09-10"},
-            {"top_level_project": "archived", "task_path": "Task 3", "date": "2026-09-10"},
+            {"top_level_project": "archives", "task_path": "Task 3", "date": "2026-09-10"},
         ]
 
         # Filter work
@@ -284,10 +284,15 @@ class TestCacheAndResolverIntegration:
         assert len(res_work) == 1
         assert res_work[0]["task_path"] == "Task 1"
 
-        # Filter archived
-        res_arch = filter_records(records, category="archived")
+        # Filter archives
+        res_arch = filter_records(records, category="archives")
         assert len(res_arch) == 1
         assert res_arch[0]["task_path"] == "Task 3"
+
+        # Filter archived (alias)
+        res_arch_alias = filter_records(records, category="archived")
+        assert len(res_arch_alias) == 1
+        assert res_arch_alias[0]["task_path"] == "Task 3"
 
 
 class TestHierarchyCLICommands:

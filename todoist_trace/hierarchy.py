@@ -368,9 +368,9 @@ class HierarchyStore:
 
         if is_archived and not has_parent and not in_hierarchy_store:
             leaf_name = chain[0]
-            if leaf_name.lower() == "archived":
-                return ("archived", "", [])
-            return ("archived", leaf_name, [leaf_name])
+            if leaf_name.lower() in ("archives", "archived"):
+                return ("archives", "", [])
+            return ("archives", leaf_name, [leaf_name])
 
         top_level = chain[0]
         levels = chain[1:]

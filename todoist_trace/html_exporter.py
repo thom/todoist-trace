@@ -1036,7 +1036,7 @@ def generate_html(
           <option value="all">All Categories</option>
           <option value="work">Work</option>
           <option value="personal">Personal</option>
-          <option value="archived">Archived</option>
+          <option value="archives">Archives</option>
         </select>
         <select id="project-filter" class="filter-select" onchange="applyFilters()">
           <option value="all">All Projects</option>
@@ -1208,8 +1208,8 @@ def generate_html(
             if (!tp.startsWith('work') && recCat !== 'work') return false;
           }} else if (cat === 'personal') {{
             if (!tp.startsWith('personal') && recCat !== 'personal') return false;
-          }} else if (cat === 'archived') {{
-            if (tp !== 'archived' && recCat !== 'archived') return false;
+          }} else if (cat === 'archives' || cat === 'archived') {{
+            if (tp !== 'archives' && tp !== 'archived' && recCat !== 'archives' && recCat !== 'archived') return false;
           }} else {{
             if (tp !== cat && recCat !== cat) return false;
           }}
@@ -1292,8 +1292,9 @@ def generate_html(
       let topProj = '-';
       let topCount = 0;
       for (const [p, c] of Object.entries(projCounts)) {{
-        // Exclude the generic 'archived' bucket from the Top Project KPI if other projects exist
-        if (p.toLowerCase() === 'archived' && Object.keys(projCounts).length > 1) continue;
+        // Exclude the generic 'archives' bucket from the Top Project KPI if other projects exist
+        const pLow = p.toLowerCase();
+        if ((pLow === 'archives' || pLow === 'archived') && Object.keys(projCounts).length > 1) continue;
         if (c > topCount) {{
           topProj = p;
           topCount = c;
