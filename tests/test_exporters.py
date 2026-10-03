@@ -489,6 +489,41 @@ class TestExporters:
         assert "Core Architecture" in html_out
         assert 'setTaskStyle' in html_out
 
+    def test_generate_html_project_hierarchy_support(self):
+        from todoist_trace.exporters import generate_html
+
+        records = [
+            {
+                "top_level_project": "work",
+                "project_path": "alpha-service",
+                "project_levels": ["alpha-service"],
+                "section": "",
+                "date": "2026-10-02",
+                "time": "10:00:00",
+                "task_path": "task-alpha",
+                "task_levels": ["task-alpha"],
+            },
+            {
+                "top_level_project": "work-areas",
+                "project_path": "admin/triage",
+                "project_levels": ["admin", "triage"],
+                "section": "daily",
+                "date": "2026-10-02",
+                "time": "11:00:00",
+                "task_path": "task-beta",
+                "task_levels": ["task-beta"],
+            },
+        ]
+        html_out = generate_html(records, title="Project Hierarchy Test")
+        assert "buildProjectTree" in html_out
+        assert "renderProjectNode" in html_out
+        assert ".top-project-group" in html_out
+        assert ".subproject-group" in html_out
+        assert "alpha-service" in html_out
+        assert "work-areas" in html_out
+        assert "admin" in html_out
+        assert "triage" in html_out
+
     def test_export_html_file_creation(self, tmp_path):
         from todoist_trace.exporters import export_html
 

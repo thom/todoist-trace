@@ -513,31 +513,121 @@ def generate_html(
       padding: 16px 20px;
     }}
 
-    /* Project Group inside Day */
-    .project-group {{
-      margin-bottom: 18px;
+    /* Top-Level Project Group */
+    .top-project-group {{
+      margin-bottom: 14px;
+      background-color: var(--bg-card-subtle);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 12px 14px;
     }}
 
-    .project-group:last-child {{
+    .top-project-group:last-child {{
       margin-bottom: 0;
     }}
 
-    .project-header {{
+    .top-project-header {{
       display: flex;
       align-items: center;
-      gap: 8px;
+      justify-content: space-between;
       margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border-subtle);
     }}
 
-    .project-tag {{
-      font-size: 13px;
-      font-weight: 700;
+    .top-project-hash {{
       color: var(--accent);
+      font-weight: 800;
+      font-size: 15px;
+      user-select: none;
     }}
 
-    .project-path-tag {{
-      font-size: 12px;
+    .top-project-title {{
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }}
+
+    .top-project-count-badge {{
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      background-color: var(--bg-hover);
+      padding: 2px 8px;
+      border-radius: 10px;
+    }}
+
+    .top-project-content {{
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }}
+
+    /* Sub-Project Group */
+    .subproject-group {{
+      margin-top: 4px;
+      margin-bottom: 6px;
+      padding-left: 12px;
+      border-left: 2px solid var(--accent);
+    }}
+
+    .subproject-group.depth-1 {{
+      margin-left: 14px;
+      border-left: 2px dashed var(--accent-light);
+    }}
+
+    .subproject-group.depth-2 {{
+      margin-left: 14px;
+      border-left: 2px dotted var(--text-dim);
+    }}
+
+    .subproject-header {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }}
+
+    .subproject-hash {{
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 13px;
+      user-select: none;
+    }}
+
+    .subproject-title {{
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }}
+
+    .subproject-count-badge {{
+      font-size: 10px;
+      font-weight: 500;
       color: var(--text-dim);
+      background-color: var(--bg-hover);
+      padding: 1px 6px;
+      border-radius: 8px;
+    }}
+
+    .subproject-content {{
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }}
+
+    /* Section Group inside Project */
+    .project-section-group {{
+      margin-top: 8px;
+      margin-bottom: 4px;
+    }}
+
+    .project-section-header {{
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
     }}
 
     .section-tag {{
@@ -1127,33 +1217,34 @@ def generate_html(
             <div class="day-content">
         `;
 
-        // Group by project within day
-        const byProject = {{}};
+        // Split by top-level project first
+        const byTopProj = {{}};
         dayRecords.forEach(r => {{
-          const projKey = r.top_level_project + (r.project_path ? ` / ${{r.project_path}}` : '') + (r.section ? ` [${{r.section}}]` : '');
-          if (!byProject[projKey]) byProject[projKey] = [];
-          byProject[projKey].push(r);
+          const tp = r.top_level_project || 'Uncategorized';
+          if (!byTopProj[tp]) byTopProj[tp] = [];
+          byTopProj[tp].push(r);
         }});
 
-        for (const [projKey, tasks] of Object.entries(byProject)) {{
+        const sortedTopProjs = Object.keys(byTopProj).sort();
+        sortedTopProjs.forEach(topProj => {{
+          const topRecords = byTopProj[topProj];
+          const projectTree = buildProjectTree(topRecords);
+
           html += `
-            <div class="project-group">
-              <div class="project-header">
-                <span class="project-tag">📁 ${{escapeHtml(projKey)}}</span>
+            <div class="top-project-group">
+              <div class="top-project-header">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="top-project-hash">#</span>
+                  <span class="top-project-title">${{escapeHtml(topProj)}}</span>
+                </div>
+                <span class="top-project-count-badge">${{topRecords.length}} task${{topRecords.length === 1 ? '' : 's'}}</span>
               </div>
+              <div class="top-project-content">
+                ${{renderProjectNode(projectTree, 0)}}
+              </div>
+            </div>
           `;
-
-          if (currentTaskStyle === 'nested') {{
-            const tree = buildTaskTree(tasks);
-            html += renderTaskTree(tree, 0);
-          }} else {{
-            tasks.forEach(t => {{
-              html += renderFlatTaskItem(t);
-            }});
-          }}
-
-          html += `</div>`;
-        }}
+        }});
 
         html += `
             </div>
@@ -1313,6 +1404,141 @@ def generate_html(
       return html;
     }}
 
+    // Hierarchical Project Tree Resolution
+    function buildProjectTree(records) {{
+      const root = {{
+        name: '',
+        records: [],
+        children: {{}}
+      }};
+
+      records.forEach(r => {{
+        let levels = r.project_levels;
+        if (!levels || levels.length === 0) {{
+          if (r.project_path) {{
+            levels = r.project_path.split('/').map(s => s.trim()).filter(Boolean);
+          }}
+        }}
+
+        if (!levels || levels.length === 0) {{
+          root.records.push(r);
+          return;
+        }}
+
+        let curr = root;
+        for (let i = 0; i < levels.length; i++) {{
+          const lvl = levels[i];
+          if (!curr.children[lvl]) {{
+            curr.children[lvl] = {{
+              name: lvl,
+              records: [],
+              children: {{}}
+            }};
+          }}
+          curr = curr.children[lvl];
+        }}
+        curr.records.push(r);
+      }});
+
+      return root;
+    }}
+
+    function countTotalProjectTasks(node) {{
+      let count = (node.records || []).length;
+      for (const child of Object.values(node.children || {{}})) {{
+        count += countTotalProjectTasks(child);
+      }}
+      return count;
+    }}
+
+    function renderTasksWithSections(records) {{
+      if (!records || records.length === 0) return '';
+
+      const hasSections = records.some(r => Boolean(r.section));
+      if (!hasSections) {{
+        if (currentTaskStyle === 'nested') {{
+          const tree = buildTaskTree(records);
+          return renderTaskTree(tree, 0);
+        }} else {{
+          return records.map(renderFlatTaskItem).join('');
+        }}
+      }}
+
+      // Group by section: empty/unsectioned first
+      const sectionMap = {{}};
+      records.forEach(r => {{
+        const sec = r.section || '';
+        if (!sectionMap[sec]) sectionMap[sec] = [];
+        sectionMap[sec].push(r);
+      }});
+
+      let html = '';
+      if (sectionMap['']) {{
+        if (currentTaskStyle === 'nested') {{
+          const tree = buildTaskTree(sectionMap['']);
+          html += renderTaskTree(tree, 0);
+        }} else {{
+          html += sectionMap[''].map(renderFlatTaskItem).join('');
+        }}
+      }}
+
+      for (const [sec, recs] of Object.entries(sectionMap)) {{
+        if (sec === '') continue;
+        html += `
+          <div class="project-section-group">
+            <div class="project-section-header">
+              <span class="section-tag">§ ${{escapeHtml(sec)}}</span>
+              <span style="font-size: 11px; color: var(--text-dim);">${{recs.length}} tasks</span>
+            </div>
+            ${{currentTaskStyle === 'nested' ? renderTaskTree(buildTaskTree(recs), 0) : recs.map(renderFlatTaskItem).join('')}}
+          </div>
+        `;
+      }}
+
+      return html;
+    }}
+
+    function renderProjectNode(node, depth = 0) {{
+      let html = '';
+
+      // Render direct tasks under this node
+      if (node.records && node.records.length > 0) {{
+        if (depth === 0 && Object.keys(node.children).length > 0) {{
+          html += `
+            <div style="font-size: 11px; font-weight: 600; color: var(--text-dim); margin-bottom: 4px;">
+              (Direct Tasks)
+            </div>
+          `;
+        }}
+        html += renderTasksWithSections(node.records);
+      }}
+
+      // Render child subprojects
+      const sortedChildNames = Object.keys(node.children).sort();
+      for (const childName of sortedChildNames) {{
+        const child = node.children[childName];
+        const hashes = '#'.repeat(Math.min(depth + 2, 6));
+        const totalChildTasks = countTotalProjectTasks(child);
+
+        html += `
+          <div class="subproject-group depth-${{depth}}">
+            <div class="subproject-header">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="subproject-hash">${{hashes}}</span>
+                <span class="subproject-title">${{escapeHtml(child.name)}}</span>
+              </div>
+              <span class="subproject-count-badge">${{totalChildTasks}} task${{totalChildTasks === 1 ? '' : 's'}}</span>
+            </div>
+            <div class="subproject-content">
+              ${{renderProjectNode(child, depth + 1)}}
+            </div>
+          </div>
+        `;
+      }}
+
+      return html;
+    }}
+
     function filterByTag(tag) {{
       document.getElementById('search-box').value = `@${{tag.replace(/^@/, '')}}`;
       applyFilters();
@@ -1328,6 +1554,7 @@ def generate_html(
         return;
       }}
 
+      // Group by top-level project
       const byProject = {{}};
       filteredRecords.forEach(r => {{
         const p = r.top_level_project || 'Uncategorized';
@@ -1335,32 +1562,25 @@ def generate_html(
         byProject[p].push(r);
       }});
 
+      const sortedTopProjs = Object.keys(byProject).sort();
+
       let html = '';
-      for (const [proj, tasks] of Object.entries(byProject)) {{
+      for (const proj of sortedTopProjs) {{
+        const tasks = byProject[proj];
+        const projectTree = buildProjectTree(tasks);
+
         html += `
           <div class="day-group">
             <div class="day-header" onclick="toggleDayAccordion(this)">
               <div class="day-title">
-                <span>📁 ${{escapeHtml(proj)}}</span>
+                <span class="top-project-hash" style="margin-right: 4px;">#</span>
+                <span style="font-weight: 700;">${{escapeHtml(proj)}}</span>
                 <span class="day-count-badge">${{tasks.length}} tasks</span>
               </div>
               <span class="day-toggle-icon">▼</span>
             </div>
-            <div class="day-content">
-        `;
-        const tasksToRender = tasks.slice(0, 100);
-        if (currentTaskStyle === 'nested') {{
-          const tree = buildTaskTree(tasksToRender);
-          html += renderTaskTree(tree, 0);
-        }} else {{
-          tasksToRender.forEach(t => {{
-            html += renderFlatTaskItem(t);
-          }});
-        }}
-        if (tasks.length > 100) {{
-          html += `<div style="font-size:12px; color:var(--text-dim); text-align:center; padding:8px;">+ ${{tasks.length - 100}} more tasks in this project</div>`;
-        }}
-        html += `
+            <div class="day-content" style="padding: 10px 14px;">
+              ${{renderProjectNode(projectTree, 0)}}
             </div>
           </div>
         `;
@@ -1401,11 +1621,15 @@ def generate_html(
           taskCellContent = `<strong>${{escapeHtml(r.task_path || '-')}}</strong>`;
         }}
 
+        const projDisplay = (r.project_levels && r.project_levels.length > 0)
+          ? r.project_levels.join(' › ')
+          : (r.project_path || '-');
+
         rows += `
           <tr>
             <td style="font-family: monospace;">${{escapeHtml(r.date)}} ${{escapeHtml(r.time || '')}}</td>
             <td><span class="badge" style="background:var(--bg-hover);">${{escapeHtml(r.top_level_project || '-')}}</span></td>
-            <td>${{escapeHtml(r.project_path || '-')}}${{r.section ? ` <span class="section-tag">${{escapeHtml(r.section)}}</span>` : ''}}</td>
+            <td>${{escapeHtml(projDisplay)}}${{r.section ? ` <span class="section-tag">${{escapeHtml(r.section)}}</span>` : ''}}</td>
             <td>
               ${{taskCellContent}}
               ${{r.description ? `<div style="font-size:11px; color:var(--text-muted);">${{escapeHtml(r.description)}}</div>` : ''}}
