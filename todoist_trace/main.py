@@ -416,7 +416,7 @@ def run_hierarchy(settings: Dict[str, Any], reporter: FancyProgressReporter, cac
             else:
                 if is_arch:
                     unassigned_count += 1
-                    path_str = reporter.style.yellow("(Unassigned - Root)")
+                    path_str = reporter.style.yellow("(Unassigned -> archived)")
                 else:
                     path_str = reporter.style.dim("(Root Project)")
 

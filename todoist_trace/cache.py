@@ -1023,6 +1023,8 @@ class SQLiteTraceCache:
             where_clauses.append("(LOWER(top_level_project) LIKE 'work%' OR LOWER(top_level_project) LIKE 'work-areas%')")
         elif cat_lower == "personal":
             where_clauses.append("(LOWER(top_level_project) LIKE 'personal%' OR LOWER(top_level_project) LIKE 'personal-areas%')")
+        elif cat_lower == "archived":
+            where_clauses.append("LOWER(top_level_project) = 'archived'")
 
         if start_date:
             where_clauses.append("date >= ?")

@@ -34,6 +34,9 @@ def filter_records(
         elif cat_lower == "personal":
             if not (top_lower.startswith("personal") or top_lower.startswith("personal-areas")):
                 continue
+        elif cat_lower == "archived":
+            if top_lower != "archived":
+                continue
 
         # Date range check
         rec_date = r.get("date", "")

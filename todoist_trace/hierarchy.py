@@ -330,6 +330,14 @@ class HierarchyStore:
         if not chain:
             return ("Unknown", "", [])
 
+        # If project is unassigned archived (no parent and no fallback), group under 'archived'
+        proj_meta = self.projects.get(pid_str)
+        if proj_meta and proj_meta.get("is_archived") and len(chain) == 1:
+            leaf_name = chain[0]
+            if leaf_name.lower() == "archived":
+                return ("archived", "", [])
+            return ("archived", leaf_name, [leaf_name])
+
         top_level = chain[0]
         levels = chain[1:]
         path = "/".join(levels)

@@ -227,6 +227,58 @@ class TestCacheAndResolverIntegration:
         # Projects property loads from hierarchy store even when DB was empty
         assert len(new_cache.projects) >= 3
 
+    def test_unassigned_archived_project_resolves_to_archived(self, tmp_path):
+        store = HierarchyStore(file_path=tmp_path / "hierarchy_arch.json")
+        projects = [
+            {"id": "syn_p1", "name": "core-platform", "parent_id": None, "is_archived": False},
+            {"id": "syn_p99", "name": "legacy-experiment", "parent_id": None, "is_archived": True},
+        ]
+        store.record_batch(projects)
+
+        resolver = ProjectTreeResolver(projects, hierarchy_store=store)
+
+        # Active project resolves normally to itself
+        res_active = resolver.resolve("syn_p1")
+        assert res_active["top_level_project"] == "core-platform"
+        assert res_active["project_path"] == ""
+
+        # Unassigned archived project resolves under "archived"
+        res_arch = resolver.resolve("syn_p99")
+        assert res_arch["top_level_project"] == "archived"
+        assert res_arch["project_path"] == "legacy-experiment"
+        assert res_arch["project_levels"] == ["legacy-experiment"]
+
+        # In store resolve_project_chain as well
+        top, path, levels = store.resolve_project_chain("syn_p99")
+        assert top == "archived"
+        assert path == "legacy-experiment"
+        assert levels == ["legacy-experiment"]
+
+        # Once re-linked/assigned to a parent, it moves out of "archived"
+        store.set_parent("syn_p99", "syn_p1")
+        top_relinked, path_relinked, levels_relinked = store.resolve_project_chain("syn_p99")
+        assert top_relinked == "core-platform"
+        assert path_relinked == "legacy-experiment"
+
+    def test_category_archived_filtering(self, tmp_path):
+        from todoist_trace.filters import filter_records
+
+        records = [
+            {"top_level_project": "work", "task_path": "Task 1", "date": "2026-09-10"},
+            {"top_level_project": "personal", "task_path": "Task 2", "date": "2026-09-10"},
+            {"top_level_project": "archived", "task_path": "Task 3", "date": "2026-09-10"},
+        ]
+
+        # Filter work
+        res_work = filter_records(records, category="work")
+        assert len(res_work) == 1
+        assert res_work[0]["task_path"] == "Task 1"
+
+        # Filter archived
+        res_arch = filter_records(records, category="archived")
+        assert len(res_arch) == 1
+        assert res_arch[0]["task_path"] == "Task 3"
+
 
 class TestHierarchyCLICommands:
     def test_hierarchy_list_all_and_unassigned(self, tmp_path, capsys):

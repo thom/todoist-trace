@@ -121,14 +121,31 @@ class ProjectTreeResolver:
                 "project_levels": [],
             }
         else:
-            top_level = chain[0]
-            levels = chain[1:]
-            path = "/".join(levels)
-            res = {
-                "top_level_project": top_level,
-                "project_path": path,
-                "project_levels": levels,
-            }
+            proj_data = self.projects_by_id.get(pid_str)
+            is_archived = proj_data.get("is_archived", False) if proj_data else False
+            if is_archived and len(chain) == 1:
+                leaf_name = chain[0]
+                if leaf_name.lower() == "archived":
+                    res = {
+                        "top_level_project": "archived",
+                        "project_path": "",
+                        "project_levels": [],
+                    }
+                else:
+                    res = {
+                        "top_level_project": "archived",
+                        "project_path": leaf_name,
+                        "project_levels": [leaf_name],
+                    }
+            else:
+                top_level = chain[0]
+                levels = chain[1:]
+                path = "/".join(levels)
+                res = {
+                    "top_level_project": top_level,
+                    "project_path": path,
+                    "project_levels": levels,
+                }
 
         self.cache[pid_str] = res
         return res

@@ -93,9 +93,9 @@ def _add_export_only_arguments(parser: argparse.ArgumentParser) -> None:
     """Add options specific to formatting and filtering exports."""
     parser.add_argument(
         "-c", "--category",
-        choices=["work", "personal", "all"],
+        choices=["work", "personal", "archived", "all"],
         default=None,
-        help="Top-level project filter: work, personal, or all (default: all)",
+        help="Top-level project filter: work, personal, archived, or all (default: all)",
     )
     parser.add_argument(
         "-f", "--format",
