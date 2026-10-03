@@ -456,6 +456,38 @@ class TestExporters:
         assert "timeline-chart" in html_out
         assert "project-bars" in html_out
         assert "table-body" in html_out
+        assert "tab-style-nested" in html_out
+        assert "tab-style-flat" in html_out
+        assert "buildTaskTree" in html_out
+        assert "renderTaskTree" in html_out
+        assert ".task-tree" in html_out
+        assert ".task-children" in html_out
+
+    def test_generate_html_hierarchical_task_support(self):
+        from todoist_trace.exporters import generate_html
+
+        records = [
+            {
+                "top_level_project": "Work",
+                "project_path": "",
+                "section": "",
+                "date": "2026-10-02",
+                "time": "11:00:00",
+                "task_path": "Roadmap / Core Architecture / Performance Metrics",
+                "task_levels": ["Roadmap", "Core Architecture", "Performance Metrics"],
+                "labels": ["okr"],
+                "priority": "p2",
+                "description": "Benchmark throughput",
+                "due_date": "2026-10-02",
+                "due_variance": "on time",
+                "due_status": "on_time",
+            }
+        ]
+        html_out = generate_html(records, title="Hierarchy Test")
+        assert "Performance Metrics" in html_out
+        assert "Roadmap" in html_out
+        assert "Core Architecture" in html_out
+        assert 'setTaskStyle' in html_out
 
     def test_export_html_file_creation(self, tmp_path):
         from todoist_trace.exporters import export_html

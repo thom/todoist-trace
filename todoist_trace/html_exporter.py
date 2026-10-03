@@ -549,11 +549,65 @@ def generate_html(
       color: var(--text-muted);
     }}
 
+    /* Hierarchical Task Tree */
+    .task-tree {{
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }}
+
+    .task-tree-node {{
+      position: relative;
+    }}
+
+    .task-children {{
+      margin-left: 20px;
+      padding-left: 14px;
+      border-left: 2px dashed var(--border);
+      margin-top: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }}
+
+    .task-node-card.is-parent {{
+      background-color: var(--bg-card-subtle);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      padding: 6px 12px;
+      border-radius: 6px;
+    }}
+
+    .task-parent-icon {{
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 13px;
+      margin-right: 4px;
+    }}
+
+    .task-parent-title {{
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }}
+
+    .badge-parent {{
+      background-color: var(--bg-hover);
+      color: var(--text-dim);
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 4px;
+    }}
+
+    .task-item.is-subtask {{
+      border-left: 2px solid var(--accent-light);
+    }}
+
     /* Task Item Row */
     .task-item {{
       padding: 8px 12px;
       border-radius: 8px;
-      margin-bottom: 6px;
+      margin-bottom: 2px;
       background-color: var(--bg-card);
       border: 1px solid var(--border-subtle);
       transition: background-color 0.15s ease;
@@ -817,6 +871,13 @@ def generate_html(
 
       <div class="filter-status">
         <span id="filter-counter">Showing {total_records} of {total_records} tasks</span>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 12px; color: var(--text-dim);">Task Style:</span>
+          <div class="view-switcher">
+            <button class="view-tab active" id="tab-style-nested" onclick="setTaskStyle('nested')">⊞ Nested Bullets</button>
+            <button class="view-tab" id="tab-style-flat" onclick="setTaskStyle('flat')">≡ Flat Path</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -887,6 +948,29 @@ def generate_html(
     function toggleTheme() {{
       const current = document.documentElement.getAttribute('data-theme') || 'dark';
       setTheme(current === 'dark' ? 'light' : 'dark');
+    }}
+
+    // Task Style Management (Nested Bullets vs Flat Path)
+    let currentTaskStyle = localStorage.getItem('todoist-trace-task-style') || 'nested';
+
+    function initTaskStyle() {{
+      setTaskStyle(currentTaskStyle, false);
+    }}
+
+    function setTaskStyle(style, shouldReRender = true) {{
+      currentTaskStyle = style;
+      localStorage.setItem('todoist-trace-task-style', style);
+      const btnNested = document.getElementById('tab-style-nested');
+      const btnFlat = document.getElementById('tab-style-flat');
+      if (btnNested && btnFlat) {{
+        btnNested.classList.toggle('active', style === 'nested');
+        btnFlat.classList.toggle('active', style === 'flat');
+      }}
+      if (shouldReRender) {{
+        renderTimelineView();
+        renderProjectsView();
+        renderTableView();
+      }}
     }}
 
     // View Switching
@@ -1059,9 +1143,14 @@ def generate_html(
               </div>
           `;
 
-          tasks.forEach(t => {{
-            html += renderTaskItem(t);
-          }});
+          if (currentTaskStyle === 'nested') {{
+            const tree = buildTaskTree(tasks);
+            html += renderTaskTree(tree, 0);
+          }} else {{
+            tasks.forEach(t => {{
+              html += renderFlatTaskItem(t);
+            }});
+          }}
 
           html += `</div>`;
         }}
@@ -1080,8 +1169,58 @@ def generate_html(
       if (group) group.classList.toggle('collapsed');
     }}
 
-    // Render Single Task Item HTML
-    function renderTaskItem(t) {{
+    // Hierarchical Task Tree Resolution
+    function buildTaskTree(records) {{
+      const root = {{}};
+
+      records.forEach(r => {{
+        let levels = r.task_levels;
+        if (!levels || levels.length === 0) {{
+          if (r.task_path) {{
+            levels = r.task_path.split(' / ').map(s => s.trim()).filter(Boolean);
+          }}
+          if (!levels || levels.length === 0) {{
+            levels = ['Unnamed Task'];
+          }}
+        }}
+
+        let curr = root;
+        for (let i = 0; i < levels.length - 1; i++) {{
+          const lvl = levels[i];
+          if (!curr[lvl]) {{
+            curr[lvl] = {{
+              title: lvl,
+              records: [],
+              children: {{}}
+            }};
+          }}
+          curr = curr[lvl].children;
+        }}
+
+        const leafTitle = levels[levels.length - 1];
+        if (!curr[leafTitle]) {{
+          curr[leafTitle] = {{
+            title: leafTitle,
+            records: [r],
+            children: {{}}
+          }};
+        }} else {{
+          curr[leafTitle].records.push(r);
+        }}
+      }});
+
+      return root;
+    }}
+
+    function countTotalLeaves(node) {{
+      let count = (node.records || []).length;
+      for (const child of Object.values(node.children || {{}})) {{
+        count += countTotalLeaves(child);
+      }}
+      return count;
+    }}
+
+    function renderTaskItemCard(title, t, isSubtask = false) {{
       let prioBadge = '';
       if (t.priority) {{
         prioBadge = `<span class="badge badge-${{t.priority.toLowerCase()}}">${{t.priority.toUpperCase()}}</span>`;
@@ -1102,12 +1241,16 @@ def generate_html(
         descHtml = `<div class="task-desc">${{escapeHtml(t.description)}}</div>`;
       }}
 
+      const bullet = isSubtask
+        ? '<span class="task-bullet" style="color: var(--accent); font-weight: 700;">↳ •</span>'
+        : '<span class="task-bullet">•</span>';
+
       return `
-        <div class="task-item">
+        <div class="task-item ${{isSubtask ? 'is-subtask' : ''}}">
           <div class="task-main-row">
             <div class="task-title-group">
-              <span class="task-bullet">•</span>
-              <span class="task-content">${{escapeHtml(t.task_path || 'Unnamed Task')}}</span>
+              ${{bullet}}
+              <span class="task-content" style="${{isSubtask ? 'font-size: 13px;' : ''}}">${{escapeHtml(title)}}</span>
             </div>
             <div class="task-meta-group">
               ${{prioBadge}}
@@ -1119,6 +1262,55 @@ def generate_html(
           ${{descHtml}}
         </div>
       `;
+    }}
+
+    function renderFlatTaskItem(t) {{
+      return renderTaskItemCard(t.task_path || 'Unnamed Task', t, false);
+    }}
+
+    function renderTaskItem(t) {{
+      return renderFlatTaskItem(t);
+    }}
+
+    function renderTaskTree(nodes, depth = 0) {{
+      let html = '<div class="task-tree">';
+      for (const node of Object.values(nodes)) {{
+        const hasChildren = Object.keys(node.children).length > 0;
+        const hasRecords = node.records && node.records.length > 0;
+
+        html += '<div class="task-tree-node">';
+
+        if (hasRecords) {{
+          node.records.forEach(r => {{
+            html += renderTaskItemCard(node.title, r, depth > 0);
+          }});
+        }} else {{
+          const subtaskCount = countTotalLeaves(node);
+          html += `
+            <div class="task-node-card is-parent">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span class="task-parent-icon">📁</span>
+                  <span class="task-parent-title">${{escapeHtml(node.title)}}</span>
+                </div>
+                <span class="badge-parent">${{subtaskCount}} subtask${{subtaskCount === 1 ? '' : 's'}}</span>
+              </div>
+            </div>
+          `;
+        }}
+
+        if (hasChildren) {{
+          html += `
+            <div class="task-children">
+              ${{renderTaskTree(node.children, depth + 1)}}
+            </div>
+          `;
+        }}
+
+        html += '</div>';
+      }}
+      html += '</div>';
+      return html;
     }}
 
     function filterByTag(tag) {{
@@ -1156,9 +1348,15 @@ def generate_html(
             </div>
             <div class="day-content">
         `;
-        tasks.slice(0, 100).forEach(t => {{
-          html += renderTaskItem(t);
-        }});
+        const tasksToRender = tasks.slice(0, 100);
+        if (currentTaskStyle === 'nested') {{
+          const tree = buildTaskTree(tasksToRender);
+          html += renderTaskTree(tree, 0);
+        }} else {{
+          tasksToRender.forEach(t => {{
+            html += renderFlatTaskItem(t);
+          }});
+        }}
         if (tasks.length > 100) {{
           html += `<div style="font-size:12px; color:var(--text-dim); text-align:center; padding:8px;">+ ${{tasks.length - 100}} more tasks in this project</div>`;
         }}
@@ -1190,13 +1388,26 @@ def generate_html(
       let rows = '';
       sorted.slice(0, 250).forEach(r => {{
         const tags = (r.labels || []).map(l => `@${{l.replace(/^@/, '')}}`).join(', ');
+
+        let taskCellContent = '';
+        if (currentTaskStyle === 'nested' && r.task_levels && r.task_levels.length > 1) {{
+          const ancestors = r.task_levels.slice(0, -1).map(escapeHtml).join(' › ');
+          const leaf = escapeHtml(r.task_levels[r.task_levels.length - 1]);
+          taskCellContent = `
+            <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 2px;">${{ancestors}}</div>
+            <strong>${{leaf}}</strong>
+          `;
+        }} else {{
+          taskCellContent = `<strong>${{escapeHtml(r.task_path || '-')}}</strong>`;
+        }}
+
         rows += `
           <tr>
             <td style="font-family: monospace;">${{escapeHtml(r.date)}} ${{escapeHtml(r.time || '')}}</td>
             <td><span class="badge" style="background:var(--bg-hover);">${{escapeHtml(r.top_level_project || '-')}}</span></td>
             <td>${{escapeHtml(r.project_path || '-')}}${{r.section ? ` <span class="section-tag">${{escapeHtml(r.section)}}</span>` : ''}}</td>
             <td>
-              <strong>${{escapeHtml(r.task_path || '-')}}</strong>
+              ${{taskCellContent}}
               ${{r.description ? `<div style="font-size:11px; color:var(--text-muted);">${{escapeHtml(r.description)}}</div>` : ''}}
             </td>
             <td>${{r.priority ? `<span class="badge badge-${{r.priority.toLowerCase()}}">${{r.priority.toUpperCase()}}</span>` : '-'}}</td>
@@ -1348,6 +1559,7 @@ def generate_html(
     // Window Init
     window.addEventListener('DOMContentLoaded', () => {{
       initTheme();
+      initTaskStyle();
       initFilterDropdowns();
       applyFilters();
     }});
