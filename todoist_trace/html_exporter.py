@@ -1902,22 +1902,21 @@ def generate_html(
       // 1. Escape HTML entities
       text = escapeHtml(text);
 
-      // 2. Protect inline code `...`
+      // 2. Protect inline code `...` using non-markdown sentinel tokens
       const tokens = [];
       text = text.replace(/`([^`]+)`/g, (match, code) => {{
         tokens.push(`<code>${{code}}</code>`);
-        return `__MD_TOKEN_${{tokens.length - 1}}__`;
+        return `@@@MD_TOKEN_${{tokens.length - 1}}@@@`;
       }});
 
       // 3. Markdown links: [text](url)
       text = text.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, (match, linkText, url) => {{
         const trimmedUrl = url.trim();
-        const lowerUrl = trimmedUrl.toLowerCase();
-        if (lowerUrl.startsWith('javascript:') || lowerUrl.startsWith('data:') || lowerUrl.startsWith('vbscript:')) {{
+        if (!/^(https?:|mailto:|#|\\/)/i.test(trimmedUrl)) {{
           return linkText;
         }}
         tokens.push(`<a href="${{trimmedUrl}}" target="_blank" rel="noopener noreferrer">${{linkText}}</a>`);
-        return `__MD_TOKEN_${{tokens.length - 1}}__`;
+        return `@@@MD_TOKEN_${{tokens.length - 1}}@@@`;
       }});
 
       // 4. Autolink bare URLs: https://... or http://...
@@ -1930,27 +1929,32 @@ def generate_html(
           url = url.slice(0, -trailingPunct.length);
         }}
         tokens.push(`<a href="${{url}}" target="_blank" rel="noopener noreferrer">${{url}}</a>`);
-        return `${{prefix}}__MD_TOKEN_${{tokens.length - 1}}__${{trailingPunct}}`;
+        return `${{prefix}}@@@MD_TOKEN_${{tokens.length - 1}}@@@${{trailingPunct}}`;
       }});
 
-      // 5. Bold, Italic & Strikethrough
-      text = text.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
-      text = text.replace(/__(.+?)__/g, '<strong>$1</strong>');
-      text = text.replace(/\\*([^*]+)\\*/g, '<em>$1</em>');
-      text = text.replace(/(^|[^\\w])_([^_]+)_(?![\\w])/g, '$1<em>$2</em>');
-      text = text.replace(/~~(.+?)~~/g, '<del>$1</del>');
+      // 5. Bold, Italic & Strikethrough (restricted to non-newline matches and non-space boundaries)
+      text = text.replace(/\\*\\*(?!\\s)([^\\*\\n]+?)(?<!\\s)\\*\\*/g, '<strong>$1</strong>');
+      text = text.replace(/__(?!\\s)([^_\\n]+?)(?<!\\s)__/g, '<strong>$1</strong>');
+      text = text.replace(/(^|[^\\*])\\*(?!\\s)([^\\*\\n]+?)(?<!\\s)\\*/g, '$1<em>$2</em>');
+      text = text.replace(/(^|[^\\w])_(?!\\s)([^_\\n]+?)(?<!\\s)_(?![\\w])/g, '$1<em>$2</em>');
+      text = text.replace(/~~(?!\\s)([^~\\n]+?)(?<!\\s)~~/g, '<del>$1</del>');
 
       // 6. Restore protected tokens
-      text = text.replace(/__MD_TOKEN_(\\d+)__/g, (match, index) => {{
+      text = text.replace(/@@@MD_TOKEN_(\\d+)@@@/g, (match, index) => {{
         return tokens[parseInt(index, 10)] || match;
       }});
 
+      const NL = String.fromCharCode(10);
+      const CR = String.fromCharCode(13);
+      const reAllNewlines = new RegExp('[' + CR + NL + ']+', 'g');
+      const reNewline = new RegExp(CR + '?' + NL);
+
       if (inlineOnly) {{
-        return text.replace(/[\\\\r\\\\n]+/g, ' ');
+        return text.replace(reAllNewlines, ' ');
       }}
 
       // 7. Multiline block rendering for descriptions (lists, paragraphs, line breaks)
-      const lines = text.split(/\\\\r?\\\\n/);
+      const lines = text.split(reNewline);
       const outBlocks = [];
       let inList = false;
       let listType = '';

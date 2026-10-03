@@ -2,6 +2,11 @@
 Unit tests for CSV and Markdown exporters, including bullet hierarchies.
 """
 
+import re
+import shutil
+import subprocess
+import tempfile
+
 from todoist_trace.exporters import (
     export_csv,
     export_markdown,
@@ -594,6 +599,104 @@ class TestExporters:
         assert ".task-desc code" in html_out
         assert "Register for Exam" in html_out
         assert "https://example.com/certification-exam" in html_out
+
+    def test_generate_html_javascript_syntax_validity(self):
+        """Verify embedded JavaScript in the generated HTML dashboard has valid syntax."""
+        from todoist_trace.exporters import generate_html
+
+        records = [
+            {
+                "top_level_project": "certifications",
+                "project_path": "study",
+                "project_levels": ["study"],
+                "section": "Exam prep",
+                "date": "2026-10-02",
+                "time": "14:00:00",
+                "task_path": "[Register for Exam](https://example.com/certification-exam)",
+                "task_levels": ["[Register for Exam](https://example.com/certification-exam)"],
+                "labels": ["study"],
+                "priority": "p1",
+                "description": "Prerequisites:\n* Complete **foundations** course\n* Review `sample_questions.pdf`\nSee https://example.com/docs for details.",
+                "due_date": "2026-10-05",
+                "due_variance": "on time",
+                "due_status": "on_time",
+            }
+        ]
+        html_out = generate_html(records, title="Syntax Test")
+        scripts = re.findall(
+            r"<script(?![^>]*type=\"application/json\")>(.*?)</script>",
+            html_out,
+            re.DOTALL,
+        )
+        assert len(scripts) >= 1
+
+        # Node.js syntax and runtime execution check (if node is installed)
+        node_bin = shutil.which("node")
+        if node_bin:
+            # 1. Authoritative syntax check on raw emitted script
+            with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+                f.write(scripts[0])
+                syntax_fpath = f.name
+            proc_syntax = subprocess.run(
+                [node_bin, "--check", syntax_fpath],
+                capture_output=True,
+                text=True,
+            )
+            assert (
+                proc_syntax.returncode == 0
+            ), f"Node.js syntax check failed:\n{proc_syntax.stderr}"
+
+            # 2. Execution test verifying client-side renderMarkdown behavior
+            test_js = (
+                """
+global.window = { addEventListener: () => {}, matchMedia: () => ({ matches: true }) };
+global.document = {
+  documentElement: { setAttribute: () => {}, getAttribute: () => "dark" },
+  getElementById: () => ({ textContent: "[]", innerHTML: "", value: "all", classList: { add: () => {}, remove: () => {}, toggle: () => {} } }),
+  querySelectorAll: () => []
+};
+global.localStorage = { getItem: () => null, setItem: () => {} };
+"""
+                + scripts[0]
+                + """
+// Test renderMarkdown function directly
+const linkOut = renderMarkdown("[Register for Exam](https://example.com/certification-exam)", true);
+if (!linkOut.includes('<a href="https://example.com/certification-exam"') || !linkOut.includes('target="_blank"')) {
+  throw new Error("Link rendering failed: " + linkOut);
+}
+
+const listOut = renderMarkdown("Prerequisites:\\n* Complete **foundations** course\\n* Review `sample.pdf`", false);
+if (!listOut.includes("<ul><li>Complete <strong>foundations</strong> course</li>") || !listOut.includes("<code>sample.pdf</code>")) {
+  throw new Error("List rendering failed: " + listOut);
+}
+
+const autoOut = renderMarkdown("Visit https://example.com/docs for help.", true);
+if (!autoOut.includes('<a href="https://example.com/docs"')) {
+  throw new Error("Autolink failed: " + autoOut);
+}
+
+const codeUnderscore = renderMarkdown("Variable `user_profile_id` here", true);
+if (!codeUnderscore.includes("<code>user_profile_id</code>")) {
+  throw new Error("Code underscore failed: " + codeUnderscore);
+}
+
+const xssOut = renderMarkdown("[click](javascript:alert(1))", true);
+if (xssOut.includes("javascript:")) {
+  throw new Error("XSS unsafe scheme not blocked: " + xssOut);
+}
+"""
+            )
+            with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+                f.write(test_js)
+                exec_fpath = f.name
+
+            proc_exec = subprocess.run(
+                [node_bin, exec_fpath], capture_output=True, text=True
+            )
+            assert (
+                proc_exec.returncode == 0
+            ), f"Node.js execution failed:\nSTDOUT: {proc_exec.stdout}\nSTDERR: {proc_exec.stderr}"
+
 
 
 
