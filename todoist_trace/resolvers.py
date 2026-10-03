@@ -355,13 +355,13 @@ class TaskHierarchyResolver:
 
     def __init__(
         self,
-        token: str,
+        token: Optional[str] = None,
         preloaded_tasks: Optional[Dict[str, Dict[str, Any]]] = None,
         cache: Optional[Any] = None,
         tz: Optional[Union[str, tzinfo]] = None,
     ):
         self.token = token
-        self.headers = {"Authorization": f"Bearer {token}"}
+        self.headers = {"Authorization": f"Bearer {token}"} if token else {}
         self.cache = cache
         self.tz = resolve_timezone(tz)
         # Prioritize cache tasks, fallback to preloaded
@@ -376,6 +376,9 @@ class TaskHierarchyResolver:
         tid = str(task_id)
         if tid in self.task_cache:
             return self.task_cache[tid]
+
+        if not self.token:
+            return None
 
         url = f"https://api.todoist.com/api/v1/tasks/{tid}"
         try:

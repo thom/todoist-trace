@@ -127,13 +127,13 @@ class FancyProgressReporter:
         quiet: bool = False,
         no_color: bool = False,
         plain: bool = False,
-        stream=sys.stdout,
+        stream=None,
     ):
         self.quiet = quiet
         self.plain = plain
-        self.stream = stream
-        self.color_enabled = supports_color(stream, force_no_color=no_color)
-        self.is_tty = is_interactive_terminal(stream, force_plain=plain) and not self.quiet
+        self.stream = sys.stdout if stream is None else stream
+        self.color_enabled = supports_color(self.stream, force_no_color=no_color)
+        self.is_tty = is_interactive_terminal(self.stream, force_plain=plain) and not self.quiet
         self.style = Style(self.color_enabled)
         self.spinner_idx = 0
         self._last_line_len = 0

@@ -22,7 +22,7 @@ from .cache import (
     coalesce_intervals,
     create_cache,
 )
-from .cli import parse_args, resolve_settings
+from .cli import create_parser, parse_args, resolve_settings
 from .config import (
     DEFAULT_APP_DIR,
     DEFAULT_CACHE_PATH,
@@ -40,7 +40,7 @@ from .exporters import (
     generate_markdown,
 )
 from .filters import filter_records
-from .main import main
+from .main import main, run_export, run_status, run_sync
 from .progress import (
     FancyProgressReporter,
     format_duration,
@@ -78,6 +78,7 @@ __all__ = [
     "calculate_missing_intervals",
     "coalesce_intervals",
     "create_cache",
+    "create_parser",
     "export_csv",
     "export_markdown",
     "fetch_completed_activities",
@@ -97,4 +98,7 @@ __all__ = [
     "parse_args",
     "resolve_settings",
     "resolve_timezone",
+    "run_export",
+    "run_status",
+    "run_sync",
 ]

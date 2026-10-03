@@ -25,6 +25,7 @@ from todoist_trace import (
     calculate_missing_intervals,
     coalesce_intervals,
     create_cache,
+    create_parser,
     export_csv,
     export_markdown,
     fetch_completed_activities,
@@ -44,6 +45,9 @@ from todoist_trace import (
     parse_args,
     resolve_settings,
     resolve_timezone,
+    run_export,
+    run_status,
+    run_sync,
 )
 
 __all__ = [
@@ -66,6 +70,7 @@ __all__ = [
     "calculate_missing_intervals",
     "coalesce_intervals",
     "create_cache",
+    "create_parser",
     "export_csv",
     "export_markdown",
     "fetch_completed_activities",
@@ -85,6 +90,9 @@ __all__ = [
     "parse_args",
     "resolve_settings",
     "resolve_timezone",
+    "run_export",
+    "run_status",
+    "run_sync",
 ]
 
 if __name__ == "__main__":

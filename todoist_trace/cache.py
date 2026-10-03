@@ -217,6 +217,21 @@ class TraceCache:
             default=None,
         )
 
+    def get_oldest_event_date(self) -> Optional[str]:
+        """Return the ISO event_date of the oldest event in cache."""
+        if not self.events:
+            return None
+        return min(
+            (str(ev.get("event_date", "")) for ev in self.events.values() if ev.get("event_date")),
+            default=None,
+        )
+
+    def get_date_bounds(self) -> Tuple[Optional[str], Optional[str]]:
+        return (self.get_oldest_event_date(), self.get_latest_event_date())
+
+    def get_last_sync(self) -> Optional[str]:
+        return self.last_sync
+
     def merge_events(self, new_events: List[Dict[str, Any]]) -> None:
         for ev in new_events:
             ev_id = str(ev.get("id"))
@@ -372,75 +387,109 @@ class SQLiteTraceCache:
         self._labels: LabelCacheDict = LabelCacheDict(self)
         self.conn: Optional[sqlite3.Connection] = None
         if self.enabled:
+            self._verify_and_backup_incompatible_db()
             self._init_db()
-            self._auto_migrate_if_needed()
-            self._init_sync_ranges_if_needed()
-            self._load_metadata()
+            if self.enabled and self.conn:
+                self._auto_migrate_if_needed()
+                self._init_sync_ranges_if_needed()
+                self._load_metadata()
+
+    def _verify_and_backup_incompatible_db(self) -> None:
+        """Verify database integrity; on error or incompatibility, backup to .bak and start fresh."""
+        if not self.path.is_file():
+            return
+        needs_backup = False
+        try:
+            conn = sqlite3.connect(str(self.path))
+            cur = conn.cursor()
+            res = cur.execute("PRAGMA quick_check").fetchone()
+            if not res or res[0] != "ok":
+                needs_backup = True
+            conn.close()
+        except Exception:
+            needs_backup = True
+
+        if needs_backup:
+            backup_path = self.path.with_name(f"{self.path.name}.bak")
+            try:
+                if backup_path.exists():
+                    backup_path.unlink()
+                self.path.rename(backup_path)
+                sys.stderr.write(
+                    f"Warning: Incompatible or damaged cache backed up to {backup_path.name}. Initialized fresh cache.\n"
+                )
+            except Exception as e:
+                sys.stderr.write(f"Warning: Failed to backup cache {self.path}: {e}\n")
 
     def _init_db(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(self.path))
-        self.conn.row_factory = sqlite3.Row
-        with self.conn:
-            self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS projects (
-                    id TEXT PRIMARY KEY,
-                    parent_id TEXT,
-                    name TEXT,
-                    is_archived INTEGER,
-                    is_deleted INTEGER,
-                    payload TEXT
-                )
-            """)
-            self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS sections (
-                    id TEXT PRIMARY KEY,
-                    project_id TEXT,
-                    name TEXT,
-                    payload TEXT
-                )
-            """)
-            self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS labels (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    color TEXT,
-                    payload TEXT
-                )
-            """)
-            self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS tasks (
-                    id TEXT PRIMARY KEY,
-                    parent_id TEXT,
-                    content TEXT,
-                    payload TEXT
-                )
-            """)
-            self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS events (
-                    id TEXT PRIMARY KEY,
-                    event_date TEXT,
-                    object_id TEXT,
-                    parent_project_id TEXT,
-                    extra_data TEXT,
-                    payload TEXT
-                )
-            """)
-            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_events_date ON events(event_date)")
-            self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS sync_ranges (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    start_time TEXT NOT NULL,
-                    end_time TEXT NOT NULL,
-                    is_genesis INTEGER DEFAULT 0
-                )
-            """)
-            self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS meta (
-                    key TEXT PRIMARY KEY,
-                    value TEXT
-                )
-            """)
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.conn = sqlite3.connect(str(self.path))
+            self.conn.row_factory = sqlite3.Row
+            with self.conn:
+                self.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS projects (
+                        id TEXT PRIMARY KEY,
+                        parent_id TEXT,
+                        name TEXT,
+                        is_archived INTEGER,
+                        is_deleted INTEGER,
+                        payload TEXT
+                    )
+                """)
+                self.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS sections (
+                        id TEXT PRIMARY KEY,
+                        project_id TEXT,
+                        name TEXT,
+                        payload TEXT
+                    )
+                """)
+                self.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS labels (
+                        id TEXT PRIMARY KEY,
+                        name TEXT,
+                        color TEXT,
+                        payload TEXT
+                    )
+                """)
+                self.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS tasks (
+                        id TEXT PRIMARY KEY,
+                        parent_id TEXT,
+                        content TEXT,
+                        payload TEXT
+                    )
+                """)
+                self.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS events (
+                        id TEXT PRIMARY KEY,
+                        event_date TEXT,
+                        object_id TEXT,
+                        parent_project_id TEXT,
+                        extra_data TEXT,
+                        payload TEXT
+                    )
+                """)
+                self.conn.execute("CREATE INDEX IF NOT EXISTS idx_events_date ON events(event_date)")
+                self.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS sync_ranges (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        start_time TEXT NOT NULL,
+                        end_time TEXT NOT NULL,
+                        is_genesis INTEGER DEFAULT 0
+                    )
+                """)
+                self.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS meta (
+                        key TEXT PRIMARY KEY,
+                        value TEXT
+                    )
+                """)
+        except Exception as e:
+            sys.stderr.write(f"Warning: Could not open or initialize cache at {self.path}: {e}\n")
+            self.conn = None
+            self.enabled = False
 
     def _init_sync_ranges_if_needed(self) -> None:
         """Initialize sync_ranges from existing events for upgraded databases."""
@@ -630,6 +679,14 @@ class SQLiteTraceCache:
 
     def get_date_bounds(self) -> Tuple[Optional[str], Optional[str]]:
         return (self.get_oldest_event_date(), self.get_latest_event_date())
+
+    def get_last_sync(self) -> Optional[str]:
+        if not self.enabled or not self.conn:
+            return None
+        cur = self.conn.cursor()
+        cur.execute("SELECT value FROM meta WHERE key = 'last_sync'")
+        row = cur.fetchone()
+        return row[0] if row else None
 
     def get_sync_ranges(self) -> List[Tuple[str, str, bool]]:
         """Return all coalesced synchronized time ranges."""
