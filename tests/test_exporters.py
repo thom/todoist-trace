@@ -193,7 +193,7 @@ class TestExporters:
         records = [
             {
                 "top_level_project": "Work",
-                "project_path": "AI Tools",
+                "project_path": "backend",
                 "section": "Sprint 1",
                 "date": "2026-10-02",
                 "time": "14:00:00",
@@ -204,7 +204,7 @@ class TestExporters:
             }
         ]
         csv_out = generate_csv(records)
-        assert "Work,AI Tools,Sprint 1,2026-10-02,14:00:00,Implement tools,,proj_1,ev_1" in csv_out
+        assert "Work,backend,Sprint 1,2026-10-02,14:00:00,Implement tools,,proj_1,ev_1" in csv_out
 
     def test_generate_markdown_with_sections_nested_style(self):
         records = [
@@ -475,7 +475,7 @@ class TestExporters:
                 "time": "11:00:00",
                 "task_path": "Roadmap / Core Architecture / Performance Metrics",
                 "task_levels": ["Roadmap", "Core Architecture", "Performance Metrics"],
-                "labels": ["okr"],
+                "labels": ["metrics"],
                 "priority": "p2",
                 "description": "Benchmark throughput",
                 "due_date": "2026-10-02",
@@ -563,4 +563,37 @@ class TestExporters:
         html_out = generate_html([])
         assert "<!DOCTYPE html>" in html_out
         assert 'id="trace-data">[]</script>' in html_out
+
+    def test_generate_html_markdown_support(self):
+        from todoist_trace.exporters import generate_html
+
+        records = [
+            {
+                "top_level_project": "certifications",
+                "project_path": "study",
+                "project_levels": ["study"],
+                "section": "Exam prep",
+                "date": "2026-10-02",
+                "time": "14:00:00",
+                "task_path": "[Register for Exam](https://example.com/certification-exam)",
+                "task_levels": ["[Register for Exam](https://example.com/certification-exam)"],
+                "labels": ["study"],
+                "priority": "p1",
+                "description": "Prerequisites:\n* Complete **foundations** course\n* Review `sample_questions.pdf`\nSee https://example.com/docs for details.",
+                "due_date": "2026-10-05",
+                "due_variance": "on time",
+                "due_status": "on_time",
+            }
+        ]
+        html_out = generate_html(records, title="Markdown Test")
+        assert "function renderMarkdown" in html_out
+        assert "renderMarkdown(title, true)" in html_out
+        assert "renderMarkdown(t.description)" in html_out
+        assert "renderMarkdown(r.description)" in html_out
+        assert ".task-desc a" in html_out
+        assert ".task-desc code" in html_out
+        assert "Register for Exam" in html_out
+        assert "https://example.com/certification-exam" in html_out
+
+
 

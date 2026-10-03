@@ -20,4 +20,11 @@
 * **HTTP Method Enforcement**: Use HTTP `GET` exclusively (`requests.get`). Never issue `POST`, `PUT`, `PATCH`, or `DELETE` requests against the Todoist API.
 * **Zero Modification**: No tasks, projects, sections, comments, or labels may ever be modified, archived, unarchived, or deleted.
 
+## Zero Real Data & Strict Anonymization Policy
+* **Strictly Synthetic Test Data**: Tests, mock fixtures, documentation, docstrings, and commit messages must NEVER contain real user data. This includes personal task names, employer/work project names, real URLs, external domains, person names, and live Todoist IDs.
+* **No Direct Copying from User Prompts**: When the user provides examples, bug reports, or queries citing real tasks, URLs, or project paths from their live account, **never copy those strings verbatim into code, tests, or commit messages**. Always abstract and sanitize them into synthetic equivalents (e.g. `Roadmap / Architecture`, `alpha-service`, `https://example.com/item`).
+* **Reserved Example Domains**: Use only RFC 2606 reserved domains (`example.com`, `example.org`, `example.net`) for any URLs in tests.
+* **Pre-Commit Anonymity Verification**: Prior to committing changes, verify that no real user, company, or task identifiers have been introduced.
+
+
 

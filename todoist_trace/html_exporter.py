@@ -783,7 +783,41 @@ def generate_html(
       margin-left: 20px;
       padding-left: 10px;
       border-left: 2px solid var(--border);
-      font-style: italic;
+      line-height: 1.5;
+    }}
+    .task-desc a,
+    .task-content a,
+    .task-parent-title a,
+    .data-table td a {{
+      color: var(--accent);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      word-break: break-word;
+    }}
+    .task-desc a:hover,
+    .task-content a:hover,
+    .task-parent-title a:hover,
+    .data-table td a:hover {{
+      text-decoration: none;
+      filter: brightness(1.2);
+    }}
+    .task-desc code,
+    .task-content code,
+    .data-table td code {{
+      background-color: var(--bg-hover);
+      color: var(--text);
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.9em;
+      border: 1px solid var(--border);
+    }}
+    .task-desc ul, .task-desc ol {{
+      margin: 4px 0 4px 18px;
+      padding-left: 0;
+    }}
+    .task-desc li {{
+      margin-bottom: 2px;
     }}
 
     /* Table View */
@@ -1360,7 +1394,7 @@ def generate_html(
 
       let descHtml = '';
       if (t.description) {{
-        descHtml = `<div class="task-desc">${{escapeHtml(t.description)}}</div>`;
+        descHtml = `<div class="task-desc">${{renderMarkdown(t.description)}}</div>`;
       }}
 
       const bullet = isSubtask
@@ -1372,7 +1406,7 @@ def generate_html(
           <div class="task-main-row">
             <div class="task-title-group">
               ${{bullet}}
-              <span class="task-content" style="${{isSubtask ? 'font-size: 13px;' : ''}}">${{escapeHtml(title)}}</span>
+              <span class="task-content" style="${{isSubtask ? 'font-size: 13px;' : ''}}">${{renderMarkdown(title, true)}}</span>
             </div>
             <div class="task-meta-group">
               ${{prioBadge}}
@@ -1413,7 +1447,7 @@ def generate_html(
               <div style="display: flex; align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 6px;">
                   <span class="task-parent-icon">📁</span>
-                  <span class="task-parent-title">${{escapeHtml(node.title)}}</span>
+                  <span class="task-parent-title">${{renderMarkdown(node.title, true)}}</span>
                 </div>
                 <span class="badge-parent">${{subtaskCount}} subtask${{subtaskCount === 1 ? '' : 's'}}</span>
               </div>
@@ -1692,14 +1726,14 @@ def generate_html(
 
         let taskCellContent = '';
         if (currentTaskStyle === 'nested' && r.task_levels && r.task_levels.length > 1) {{
-          const ancestors = r.task_levels.slice(0, -1).map(escapeHtml).join(' › ');
-          const leaf = escapeHtml(r.task_levels[r.task_levels.length - 1]);
+          const ancestors = r.task_levels.slice(0, -1).map(l => renderMarkdown(l, true)).join(' › ');
+          const leaf = renderMarkdown(r.task_levels[r.task_levels.length - 1], true);
           taskCellContent = `
             <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 2px;">${{ancestors}}</div>
             <strong>${{leaf}}</strong>
           `;
         }} else {{
-          taskCellContent = `<strong>${{escapeHtml(r.task_path || '-')}}</strong>`;
+          taskCellContent = `<strong>${{renderMarkdown(r.task_path || '-', true)}}</strong>`;
         }}
 
         const projDisplay = (r.project_levels && r.project_levels.length > 0)
@@ -1713,7 +1747,7 @@ def generate_html(
             <td>${{escapeHtml(projDisplay)}}${{r.section ? ` <span class="section-tag">${{escapeHtml(r.section)}}</span>` : ''}}</td>
             <td>
               ${{taskCellContent}}
-              ${{r.description ? `<div style="font-size:11px; color:var(--text-muted);">${{escapeHtml(r.description)}}</div>` : ''}}
+              ${{r.description ? `<div style="font-size:11px; color:var(--text-muted); margin-top:3px;">${{renderMarkdown(r.description)}}</div>` : ''}}
             </td>
             <td>${{r.priority ? `<span class="badge badge-${{r.priority.toLowerCase()}}">${{r.priority.toUpperCase()}}</span>` : '-'}}</td>
             <td>${{escapeHtml(tags || '-')}}</td>
@@ -1859,6 +1893,106 @@ def generate_html(
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+    }}
+
+    function renderMarkdown(str, inlineOnly = false) {{
+      if (!str) return '';
+      let text = String(str);
+
+      // 1. Escape HTML entities
+      text = escapeHtml(text);
+
+      // 2. Protect inline code `...`
+      const tokens = [];
+      text = text.replace(/`([^`]+)`/g, (match, code) => {{
+        tokens.push(`<code>${{code}}</code>`);
+        return `__MD_TOKEN_${{tokens.length - 1}}__`;
+      }});
+
+      // 3. Markdown links: [text](url)
+      text = text.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, (match, linkText, url) => {{
+        const trimmedUrl = url.trim();
+        const lowerUrl = trimmedUrl.toLowerCase();
+        if (lowerUrl.startsWith('javascript:') || lowerUrl.startsWith('data:') || lowerUrl.startsWith('vbscript:')) {{
+          return linkText;
+        }}
+        tokens.push(`<a href="${{trimmedUrl}}" target="_blank" rel="noopener noreferrer">${{linkText}}</a>`);
+        return `__MD_TOKEN_${{tokens.length - 1}}__`;
+      }});
+
+      // 4. Autolink bare URLs: https://... or http://...
+      text = text.replace(/(^|[\\s(])(https?:\\/\\/[^\\s)<>"]+)/g, (match, prefix, rawUrl) => {{
+        let url = rawUrl;
+        let trailingPunct = '';
+        const punctMatch = url.match(/[.,;:!?]+$/);
+        if (punctMatch) {{
+          trailingPunct = punctMatch[0];
+          url = url.slice(0, -trailingPunct.length);
+        }}
+        tokens.push(`<a href="${{url}}" target="_blank" rel="noopener noreferrer">${{url}}</a>`);
+        return `${{prefix}}__MD_TOKEN_${{tokens.length - 1}}__${{trailingPunct}}`;
+      }});
+
+      // 5. Bold, Italic & Strikethrough
+      text = text.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
+      text = text.replace(/__(.+?)__/g, '<strong>$1</strong>');
+      text = text.replace(/\\*([^*]+)\\*/g, '<em>$1</em>');
+      text = text.replace(/(^|[^\\w])_([^_]+)_(?![\\w])/g, '$1<em>$2</em>');
+      text = text.replace(/~~(.+?)~~/g, '<del>$1</del>');
+
+      // 6. Restore protected tokens
+      text = text.replace(/__MD_TOKEN_(\\d+)__/g, (match, index) => {{
+        return tokens[parseInt(index, 10)] || match;
+      }});
+
+      if (inlineOnly) {{
+        return text.replace(/\\n+/g, ' ');
+      }}
+
+      // 7. Multiline block rendering for descriptions (lists, paragraphs, line breaks)
+      const lines = text.split('\n');
+      const outBlocks = [];
+      let inList = false;
+      let listType = '';
+
+      for (let i = 0; i < lines.length; i++) {{
+        const line = lines[i];
+        const ulMatch = line.match(/^\\s*[*-]\\s+(.+)$/);
+        const olMatch = line.match(/^\\s*\\d+\\.\\s+(.+)$/);
+
+        if (ulMatch) {{
+          if (!inList || listType !== 'ul') {{
+            if (inList) outBlocks.push(`</${{listType}}>`);
+            outBlocks.push('<ul>');
+            inList = true;
+            listType = 'ul';
+          }}
+          outBlocks.push(`<li>${{ulMatch[1]}}</li>`);
+        }} else if (olMatch) {{
+          if (!inList || listType !== 'ol') {{
+            if (inList) outBlocks.push(`</${{listType}}>`);
+            outBlocks.push('<ol>');
+            inList = true;
+            listType = 'ol';
+          }}
+          outBlocks.push(`<li>${{olMatch[1]}}</li>`);
+        }} else {{
+          if (inList) {{
+            outBlocks.push(`</${{listType}}>`);
+            inList = false;
+            listType = '';
+          }}
+          if (line.trim() === '') {{
+            outBlocks.push('<div style="height: 4px;"></div>');
+          }} else {{
+            outBlocks.push(`<div>${{line}}</div>`);
+          }}
+        }}
+      }}
+      if (inList) {{
+        outBlocks.push(`</${{listType}}>`);
+      }}
+      return outBlocks.join('');
     }}
 
     // Window Init
