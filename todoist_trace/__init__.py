@@ -7,11 +7,13 @@ import requests
 
 from .api import (
     fetch_completed_activities,
+    fetch_labels,
     fetch_projects,
     fetch_section,
     fetch_sections,
 )
 from .cache import (
+    LabelCacheDict,
     SQLiteTraceCache,
     SectionCacheDict,
     TaskCacheDict,
@@ -46,6 +48,7 @@ from .progress import (
     supports_color,
 )
 from .resolvers import (
+    LabelResolver,
     ProjectTreeResolver,
     SectionResolver,
     TaskHierarchyResolver,
@@ -59,6 +62,8 @@ __all__ = [
     "DEFAULT_CONFIG_PATH",
     "DEFAULT_JSON_CACHE_PATH",
     "FancyProgressReporter",
+    "LabelCacheDict",
+    "LabelResolver",
     "ProjectTreeResolver",
     "SQLiteTraceCache",
     "SectionCacheDict",
@@ -73,6 +78,7 @@ __all__ = [
     "export_csv",
     "export_markdown",
     "fetch_completed_activities",
+    "fetch_labels",
     "fetch_projects",
     "fetch_section",
     "fetch_sections",

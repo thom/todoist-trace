@@ -9,10 +9,11 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 
-def generate_csv(records: List[Dict[str, Any]]) -> str:
+def generate_csv(records: List[Dict[str, Any]], include_labels: bool = False) -> str:
     """
     Generate CSV formatted text for trace records according to RFC 4180.
     Headers: top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id
+    Optional dynamic column: labels
     """
     output = io.StringIO()
     fieldnames = [
@@ -26,10 +27,13 @@ def generate_csv(records: List[Dict[str, Any]]) -> str:
         "project_id",
         "event_id",
     ]
+    if include_labels:
+        fieldnames.append("labels")
+
     writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL, lineterminator="\n")
     writer.writerow(fieldnames)
     for r in records:
-        writer.writerow([
+        row = [
             r.get("top_level_project", ""),
             r.get("project_path", ""),
             r.get("section", ""),
@@ -39,27 +43,46 @@ def generate_csv(records: List[Dict[str, Any]]) -> str:
             r.get("parent_task_id", ""),
             r.get("project_id", ""),
             r.get("event_id", ""),
-        ])
+        ]
+        if include_labels:
+            raw_lbls = r.get("labels") or []
+            row.append(",".join(raw_lbls) if isinstance(raw_lbls, list) else str(raw_lbls))
+        writer.writerow(row)
     return output.getvalue()
 
 
-def export_csv(records: List[Dict[str, Any]], output_path: str) -> None:
+def export_csv(records: List[Dict[str, Any]], output_path: str, include_labels: bool = False) -> None:
     """Export trace records to a CSV file."""
     path = Path(output_path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
-    content = generate_csv(records)
+    content = generate_csv(records, include_labels=include_labels)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
 
 
-def format_task_bullets(records_in_group: List[Dict[str, Any]], task_style: str = "nested") -> List[str]:
+def _format_label_badge(r: Dict[str, Any], include_labels: bool = False) -> str:
+    if not include_labels:
+        return ""
+    lbls = r.get("labels") or []
+    if not lbls:
+        return ""
+    tags = [f"@{lbl.lstrip('@')}" for lbl in lbls]
+    return f" [{', '.join(tags)}]"
+
+
+def format_task_bullets(
+    records_in_group: List[Dict[str, Any]],
+    task_style: str = "nested",
+    include_labels: bool = False,
+) -> List[str]:
     """Format tasks either as nested bullet hierarchy or flat slash paths."""
     if task_style == "flat":
-        return [f"- {r.get('task_path', '')}" for r in records_in_group]
+        return [f"- {r.get('task_path', '')}{_format_label_badge(r, include_labels)}" for r in records_in_group]
 
     class TaskNode:
         def __init__(self, title: str):
             self.title = title
+            self.record: Optional[Dict[str, Any]] = None
             self.children: Dict[str, "TaskNode"] = {}
 
     root_tasks: Dict[str, TaskNode] = {}
@@ -68,16 +91,23 @@ def format_task_bullets(records_in_group: List[Dict[str, Any]], task_style: str 
         if not levels:
             levels = [r.get("task_path", "")]
         curr = root_tasks
-        for lvl in levels:
+        for lvl in levels[:-1]:
             if lvl not in curr:
                 curr[lvl] = TaskNode(lvl)
             curr = curr[lvl].children
+        leaf_title = levels[-1]
+        if leaf_title not in curr:
+            curr[leaf_title] = TaskNode(leaf_title)
+        curr[leaf_title].record = r
 
     def render_tree(nodes: Dict[str, TaskNode], depth: int = 0) -> List[str]:
         res = []
         indent = "  " * depth
         for node in nodes.values():
-            res.append(f"{indent}- {node.title}")
+            badge = ""
+            if node.record:
+                badge = _format_label_badge(node.record, include_labels)
+            res.append(f"{indent}- {node.title}{badge}")
             if node.children:
                 res.extend(render_tree(node.children, depth + 1))
         return res
@@ -89,6 +119,7 @@ def format_records_with_sections(
     records: List[Dict[str, Any]],
     parent_h_level: int,
     task_style: str = "nested",
+    include_labels: bool = False,
 ) -> List[str]:
     """
     Format records, grouping by section if any records have a section.
@@ -100,7 +131,7 @@ def format_records_with_sections(
 
     has_sections = any(bool(r.get("section")) for r in records)
     if not has_sections:
-        return format_task_bullets(records, task_style=task_style)
+        return format_task_bullets(records, task_style=task_style, include_labels=include_labels)
 
     res: List[str] = []
     unsectioned: List[Dict[str, Any]] = []
@@ -116,7 +147,7 @@ def format_records_with_sections(
             sections_map[sec].append(r)
 
     if unsectioned:
-        res.extend(format_task_bullets(unsectioned, task_style=task_style))
+        res.extend(format_task_bullets(unsectioned, task_style=task_style, include_labels=include_labels))
 
     sec_h_level = min(parent_h_level + 1, 6)
     hashes = "#" * sec_h_level
@@ -125,7 +156,7 @@ def format_records_with_sections(
         if res and res[-1] != "":
             res.append("")
         res.append(f"{hashes} {sec_name}")
-        res.extend(format_task_bullets(sec_records, task_style=task_style))
+        res.extend(format_task_bullets(sec_records, task_style=task_style, include_labels=include_labels))
 
     return res
 
@@ -134,6 +165,7 @@ def generate_markdown(
     records: List[Dict[str, Any]],
     style: str = "nested",
     task_style: str = "nested",
+    include_labels: bool = False,
 ) -> str:
     """
     Format trace records into Markdown grouped by date and project hierarchy.
@@ -181,7 +213,12 @@ def generate_markdown(
 
                 # 1. Direct tasks under top_level_project (empty project_path)
                 if "" in paths_map:
-                    lines.extend(format_records_with_sections(paths_map[""], parent_h_level=3, task_style=task_style))
+                    lines.extend(format_records_with_sections(
+                        paths_map[""],
+                        parent_h_level=3,
+                        task_style=task_style,
+                        include_labels=include_labels,
+                    ))
                     lines.append("")
 
                 # 2. Sub-projects
@@ -191,7 +228,12 @@ def generate_markdown(
                     if "" not in paths_map and len(lines) > 0 and lines[-1] == f"### {top_proj}":
                         lines.append("")
                     lines.append(f"#### {p_path}")
-                    lines.extend(format_records_with_sections(recs, parent_h_level=4, task_style=task_style))
+                    lines.extend(format_records_with_sections(
+                        recs,
+                        parent_h_level=4,
+                        task_style=task_style,
+                        include_labels=include_labels,
+                    ))
                     lines.append("")
 
             else:  # nested style
@@ -224,7 +266,12 @@ def generate_markdown(
                         h_level = 3
 
                     if node.records:
-                        lines.extend(format_records_with_sections(node.records, parent_h_level=h_level, task_style=task_style))
+                        lines.extend(format_records_with_sections(
+                            node.records,
+                            parent_h_level=h_level,
+                            task_style=task_style,
+                            include_labels=include_labels,
+                        ))
                         lines.append("")
                     elif node.depth > 0 and node.children:
                         lines.append("")
@@ -242,10 +289,11 @@ def export_markdown(
     output_path: str,
     style: str = "nested",
     task_style: str = "nested",
+    include_labels: bool = False,
 ) -> None:
     """Export trace records to a Markdown file."""
     path = Path(output_path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
-    content = generate_markdown(records, style=style, task_style=task_style)
+    content = generate_markdown(records, style=style, task_style=task_style, include_labels=include_labels)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)

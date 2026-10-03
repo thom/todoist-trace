@@ -86,3 +86,28 @@ class TestCLIAndSettings:
         args_invalid = parse_args(["--timezone", "NonExistent/Zone"])
         with pytest.raises(ValueError, match="Invalid timezone"):
             resolve_settings(args_invalid)
+
+    def test_include_labels_flag_and_config(self, tmp_path, monkeypatch):
+        import json
+
+        # Default is False
+        args_def = parse_args([])
+        assert resolve_settings(args_def)["include_labels"] is False
+
+        # CLI flag overrides to True
+        args_flag = parse_args(["--labels"])
+        assert resolve_settings(args_flag)["include_labels"] is True
+
+        args_alias = parse_args(["--include-labels"])
+        assert resolve_settings(args_alias)["include_labels"] is True
+
+        # Config file support
+        cfg_file = tmp_path / "cfg.json"
+        cfg_file.write_text(json.dumps({"token": "tok", "include_labels": True}), encoding="utf-8")
+        args_cfg = parse_args(["--config", str(cfg_file)])
+        assert resolve_settings(args_cfg)["include_labels"] is True
+
+        # Env var support
+        monkeypatch.setenv("TODOIST_TRACE_LABELS", "1")
+        assert resolve_settings(args_def)["include_labels"] is True
+

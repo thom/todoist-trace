@@ -380,3 +380,65 @@ class TestSectionResolver:
         assert records[0]["section_id"] == "sec_1"
         assert records[0]["top_level_project"] == "Work"
         assert records[0]["task_path"] == "Deploy release"
+
+    def test_build_trace_records_with_label_resolver(self):
+        from todoist_trace.resolvers import (
+            LabelResolver,
+            ProjectTreeResolver,
+            TaskHierarchyResolver,
+            build_trace_records,
+        )
+        projects = [{"id": "p1", "name": "Work", "parent_id": None}]
+        p_resolver = ProjectTreeResolver(projects)
+        t_resolver = TaskHierarchyResolver(token="dummy")
+        l_resolver = LabelResolver(preloaded_labels=[{"id": "lbl_1", "name": "urgent"}])
+
+        events = [
+            {
+                "id": "e_lbl",
+                "object_id": "t_lbl",
+                "event_date": "2026-10-02T10:00:00Z",
+                "parent_project_id": "p1",
+                "extra_data": {
+                    "content": "Hotfix issue",
+                    "labels": ["lbl_1", "backend"],
+                },
+            }
+        ]
+        records = build_trace_records(events, p_resolver, t_resolver, label_resolver=l_resolver)
+        assert len(records) == 1
+        assert records[0]["labels"] == ["urgent", "backend"]
+
+
+class TestLabelResolver:
+    """Test suite for LabelResolver."""
+
+    def test_resolve_label_by_id_and_name(self):
+        from todoist_trace.resolvers import LabelResolver
+        preloaded = [
+            {"id": "lbl_1", "name": "work"},
+            {"id": "lbl_2", "name": "urgent"},
+        ]
+        resolver = LabelResolver(preloaded_labels=preloaded)
+
+        assert resolver.resolve_label("lbl_1") == "work"
+        assert resolver.resolve_label("lbl_2") == "urgent"
+        assert resolver.resolve_label("unknown") == "unknown"
+        assert resolver.resolve_label("custom_name") == "custom_name"
+
+    def test_resolve_labels_list(self):
+        from todoist_trace.resolvers import LabelResolver
+        preloaded = {"lbl_1": {"name": "frontend"}, "lbl_2": {"name": "backend"}}
+        resolver = LabelResolver(preloaded_labels=preloaded)
+
+        assert resolver.resolve_labels(["lbl_1", "lbl_2"]) == ["frontend", "backend"]
+        assert resolver.resolve_labels(["lbl_1", "infra"]) == ["frontend", "infra"]
+        assert resolver.resolve_labels([]) == []
+
+    def test_format_tags(self):
+        from todoist_trace.resolvers import LabelResolver
+        resolver = LabelResolver()
+        assert resolver.format_tags(["work", "urgent"]) == "[@work, @urgent]"
+        assert resolver.format_tags(["@already_prefixed"]) == "[@already_prefixed]"
+        assert resolver.format_tags([]) == ""
+

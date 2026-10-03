@@ -164,6 +164,7 @@ class TraceCache:
         self.projects: List[Dict[str, Any]] = []
         self.tasks: Dict[str, Dict[str, Any]] = {}
         self.sections: Dict[str, Dict[str, Any]] = {}
+        self.labels: Dict[str, Dict[str, Any]] = {}
         self.events: Dict[str, Dict[str, Any]] = {}
         self.sync_ranges: List[Dict[str, Any]] = []
         self.last_sync: Optional[str] = None
@@ -179,6 +180,7 @@ class TraceCache:
                 self.projects = data.get("projects", [])
                 self.tasks = data.get("tasks", {})
                 self.sections = data.get("sections", {})
+                self.labels = data.get("labels", {})
                 self.events = data.get("events", {})
                 self.sync_ranges = data.get("sync_ranges", [])
                 self.last_sync = data.get("last_sync")
@@ -196,6 +198,7 @@ class TraceCache:
                 "projects": self.projects,
                 "tasks": self.tasks,
                 "sections": self.sections,
+                "labels": self.labels,
                 "events": self.events,
                 "sync_ranges": self.sync_ranges,
             }
@@ -331,6 +334,31 @@ class SectionCacheDict(dict):
                 pass
 
 
+class LabelCacheDict(dict):
+    """Dictionary that auto-persists inserted labels to SQLite."""
+
+    def __init__(self, cache_instance: "SQLiteTraceCache", initial: Optional[Dict[str, Dict[str, Any]]] = None):
+        super().__init__(initial or {})
+        self._cache = cache_instance
+
+    def __setitem__(self, key: str, value: Dict[str, Any]) -> None:
+        super().__setitem__(key, value)
+        if self._cache and self._cache.enabled and self._cache.conn:
+            try:
+                with self._cache.conn:
+                    self._cache.conn.execute(
+                        "INSERT OR REPLACE INTO labels (id, name, color, payload) VALUES (?, ?, ?, ?)",
+                        (
+                            str(key),
+                            value.get("name", ""),
+                            value.get("color", ""),
+                            json.dumps(value),
+                        ),
+                    )
+            except Exception:
+                pass
+
+
 class SQLiteTraceCache:
     """SQLite-backed persistent cache with range-aware synchronization."""
 
@@ -341,6 +369,7 @@ class SQLiteTraceCache:
         self._projects: List[Dict[str, Any]] = []
         self._tasks: TaskCacheDict = TaskCacheDict(self)
         self._sections: SectionCacheDict = SectionCacheDict(self)
+        self._labels: LabelCacheDict = LabelCacheDict(self)
         self.conn: Optional[sqlite3.Connection] = None
         if self.enabled:
             self._init_db()
@@ -368,6 +397,14 @@ class SQLiteTraceCache:
                     id TEXT PRIMARY KEY,
                     project_id TEXT,
                     name TEXT,
+                    payload TEXT
+                )
+            """)
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS labels (
+                    id TEXT PRIMARY KEY,
+                    name TEXT,
+                    color TEXT,
                     payload TEXT
                 )
             """)
@@ -447,19 +484,22 @@ class SQLiteTraceCache:
                     json_projects = data.get("projects", [])
                     json_tasks = data.get("tasks", {})
                     json_sections = data.get("sections", {})
+                    json_labels = data.get("labels", {})
                     json_events = list(data.get("events", {}).values())
 
                     if json_projects:
                         self.projects = json_projects
                     if json_sections:
                         self.sections = json_sections
+                    if json_labels:
+                        self.labels = json_labels
                     if json_tasks:
                         for tid, tinfo in json_tasks.items():
                             self._tasks[tid] = tinfo
                     if json_events:
                         self.merge_events(json_events)
 
-                    print(f"Auto-migrated {len(json_events)} events, {len(json_tasks)} tasks, {len(json_sections)} sections, and {len(json_projects)} projects from {jpath.name} to SQLite cache.")
+                    print(f"Auto-migrated {len(json_events)} events, {len(json_tasks)} tasks, {len(json_sections)} sections, {len(json_labels)} labels, and {len(json_projects)} projects from {jpath.name} to SQLite cache.")
                     break
                 except Exception as e:
                     sys.stderr.write(f"Warning: Failed to auto-migrate from {jpath}: {e}\n")
@@ -474,6 +514,10 @@ class SQLiteTraceCache:
         cur.execute("SELECT id, payload FROM sections")
         for row in cur.fetchall():
             self._sections[row[0]] = json.loads(row[1])
+
+        cur.execute("SELECT id, payload FROM labels")
+        for row in cur.fetchall():
+            self._labels[row[0]] = json.loads(row[1])
 
         cur.execute("SELECT id, payload FROM tasks")
         for row in cur.fetchall():
@@ -532,6 +576,35 @@ class SQLiteTraceCache:
             ]
             self.conn.executemany(
                 "INSERT OR REPLACE INTO sections (id, project_id, name, payload) VALUES (?, ?, ?, ?)",
+                rows,
+            )
+
+    @property
+    def labels(self) -> Dict[str, Dict[str, Any]]:
+        return self._labels
+
+    @labels.setter
+    def labels(self, lbls: Union[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]) -> None:
+        if isinstance(lbls, list):
+            lbl_dict = {str(l.get("id", l.get("name", ""))): l for l in lbls if l.get("id") or l.get("name")}
+        else:
+            lbl_dict = dict(lbls)
+        self._labels = LabelCacheDict(self, lbl_dict)
+        if not self.enabled or not self.conn:
+            return
+        with self.conn:
+            rows = [
+                (
+                    str(l.get("id", l.get("name", ""))),
+                    l.get("name", ""),
+                    l.get("color", ""),
+                    json.dumps(l),
+                )
+                for l in lbl_dict.values()
+                if l.get("id") or l.get("name")
+            ]
+            self.conn.executemany(
+                "INSERT OR REPLACE INTO labels (id, name, color, payload) VALUES (?, ?, ?, ?)",
                 rows,
             )
 
@@ -700,6 +773,19 @@ class SQLiteTraceCache:
             self.conn.executemany(
                 "INSERT OR REPLACE INTO sections (id, project_id, name, payload) VALUES (?, ?, ?, ?)",
                 sec_rows,
+            )
+            lbl_rows = [
+                (
+                    str(lid),
+                    linfo.get("name", ""),
+                    linfo.get("color", ""),
+                    json.dumps(linfo),
+                )
+                for lid, linfo in self._labels.items()
+            ]
+            self.conn.executemany(
+                "INSERT OR REPLACE INTO labels (id, name, color, payload) VALUES (?, ?, ?, ?)",
+                lbl_rows,
             )
             self.conn.execute(
                 "INSERT OR REPLACE INTO meta (key, value) VALUES ('last_sync', ?)",

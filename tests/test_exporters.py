@@ -278,3 +278,45 @@ class TestExporters:
         assert "#### Infrastructure" in md
         assert "##### Sprint 1" in md
         assert "- Setup server" in md
+
+    def test_generate_csv_with_labels(self):
+        records = [
+            {
+                "top_level_project": "Work",
+                "project_path": "Backend",
+                "section": "Sprint 1",
+                "date": "2026-10-02",
+                "time": "14:00:00",
+                "task_path": "Refactor auth",
+                "parent_task_id": "",
+                "project_id": "p1",
+                "event_id": "e1",
+                "labels": ["urgent", "security"],
+            }
+        ]
+        # Without flag -> standard 9 columns
+        csv_default = generate_csv(records)
+        assert csv_default.splitlines()[0] == "top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id"
+
+        # With include_labels -> extra column
+        csv_labels = generate_csv(records, include_labels=True)
+        assert csv_labels.splitlines()[0] == "top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id,labels"
+        assert '"urgent,security"' in csv_labels
+
+    def test_generate_markdown_with_labels(self):
+        records = [
+            {
+                "top_level_project": "Work",
+                "project_path": "",
+                "section": "",
+                "date": "2026-10-02",
+                "time": "15:00:00",
+                "task_path": "Root Task / Leaf Subtask",
+                "task_levels": ["Root Task", "Leaf Subtask"],
+                "labels": ["urgent", "ops"],
+            }
+        ]
+        md = generate_markdown(records, style="nested", task_style="nested", include_labels=True)
+        assert "- Root Task" in md
+        assert "  - Leaf Subtask [@urgent, @ops]" in md
+

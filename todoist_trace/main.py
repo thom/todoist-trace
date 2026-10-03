@@ -6,7 +6,7 @@ import sys
 from datetime import datetime, timezone
 from typing import Optional
 
-from .api import fetch_completed_activities, fetch_projects, fetch_sections
+from .api import fetch_completed_activities, fetch_labels, fetch_projects, fetch_sections
 from .cache import (
     create_cache,
     normalize_end_date,
@@ -17,6 +17,7 @@ from .exporters import export_csv, export_markdown
 from .filters import filter_records
 from .progress import FancyProgressReporter
 from .resolvers import (
+    LabelResolver,
     ProjectTreeResolver,
     SectionResolver,
     TaskHierarchyResolver,
@@ -110,12 +111,25 @@ def main(argv: Optional[list] = None) -> int:
         except Exception:
             sections = cache.sections if (cache.enabled and hasattr(cache, "sections")) else {}
 
+    # Preload labels
+    if cache.enabled and hasattr(cache, "labels") and cache.labels and not settings.get("refresh"):
+        labels = cache.labels
+    else:
+        try:
+            labels_list = fetch_labels(settings["token"])
+            if cache.enabled:
+                cache.labels = labels_list
+            labels = cache.labels if cache.enabled else {l["id"]: l for l in labels_list if l.get("id")}
+        except Exception:
+            labels = cache.labels if (cache.enabled and hasattr(cache, "labels")) else {}
+
     project_resolver = ProjectTreeResolver(projects)
     section_resolver = SectionResolver(
         token=settings["token"],
         preloaded_sections=sections,
         cache=cache if cache.enabled else None,
     )
+    label_resolver = LabelResolver(preloaded_labels=labels)
 
     # 3. Fetch completed activities (gap-filling range-aware sync)
     req_start = settings.get("start_date")
@@ -175,6 +189,7 @@ def main(argv: Optional[list] = None) -> int:
         project_resolver,
         task_resolver,
         section_resolver=section_resolver,
+        label_resolver=label_resolver,
         progress_cb=lambda cur, tot: reporter.update_resolve(cur, tot),
     )
     reporter.finish_resolve(len(all_records))
@@ -192,16 +207,18 @@ def main(argv: Optional[list] = None) -> int:
     )
 
     # 6. Export records
+    inc_labels = settings.get("include_labels", False)
     out_path = settings["output"]
     out_fmt = settings["format"]
     if out_fmt == "csv":
-        export_csv(filtered_records, out_path)
+        export_csv(filtered_records, out_path, include_labels=inc_labels)
     else:
         export_markdown(
             filtered_records,
             out_path,
             style=settings["markdown_style"],
             task_style=settings["task_style"],
+            include_labels=inc_labels,
         )
 
     reporter.finish_export(
@@ -218,7 +235,11 @@ def main(argv: Optional[list] = None) -> int:
         for r in filtered_records[:3]:
             full_proj = f"{r['top_level_project']}" + (f" / {r['project_path']}" if r['project_path'] else "")
             sec_part = f" [{r['section']}]" if r.get('section') else ""
-            reporter.print_text(f"  [{r['date']} {r['time']}] {full_proj}{sec_part} -> {r['task_path']}")
+            lbl_part = ""
+            if inc_labels and r.get("labels"):
+                tags_str = ", ".join(f"@{l.lstrip('@')}" for l in r["labels"])
+                lbl_part = f" [{tags_str}]"
+            reporter.print_text(f"  [{r['date']} {r['time']}] {full_proj}{sec_part} -> {r['task_path']}{lbl_part}")
 
     return 0
 

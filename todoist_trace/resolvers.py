@@ -179,6 +179,78 @@ class SectionResolver:
         return f"[Section {sid}]"
 
 
+class LabelResolver:
+    """
+    Resolves label identifiers or names using account labels cache.
+    Formats label lists as clean [@label1, @label2] tags or plain comma list.
+    """
+
+    def __init__(
+        self,
+        token: Optional[str] = None,
+        preloaded_labels: Optional[Union[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]] = None,
+        cache: Optional[Any] = None,
+    ):
+        self.token = token
+        self.cache = cache
+        self.labels_by_id: Dict[str, Dict[str, Any]] = {}
+        self.labels_by_name: Dict[str, Dict[str, Any]] = {}
+
+        if cache and hasattr(cache, "labels") and cache.labels:
+            for lid, linfo in cache.labels.items():
+                self.labels_by_id[str(lid)] = linfo
+                if "name" in linfo:
+                    self.labels_by_name[linfo["name"]] = linfo
+
+        if preloaded_labels:
+            if isinstance(preloaded_labels, dict):
+                for k, v in preloaded_labels.items():
+                    if isinstance(v, dict):
+                        lid = str(v.get("id") or k)
+                        lname = str(v.get("name") or "")
+                        if lid:
+                            self.labels_by_id[lid] = v
+                        if lname:
+                            self.labels_by_name[lname] = v
+            elif isinstance(preloaded_labels, list):
+                for l in preloaded_labels:
+                    if isinstance(l, dict):
+                        lid = str(l.get("id", ""))
+                        lname = str(l.get("name", ""))
+                        if lid:
+                            self.labels_by_id[lid] = l
+                        if lname:
+                            self.labels_by_name[lname] = l
+
+    def resolve_label(self, label_ref: Any) -> str:
+        """Resolve a label ID or label name into its canonical label name."""
+        ref_str = str(label_ref)
+        if ref_str in self.labels_by_name:
+            return self.labels_by_name[ref_str].get("name", ref_str)
+        if ref_str in self.labels_by_id:
+            return self.labels_by_id[ref_str].get("name", ref_str)
+        return ref_str
+
+    def resolve_labels(self, label_refs: Optional[List[Any]]) -> List[str]:
+        """Resolve a list of label IDs or names into a sorted list of unique label names."""
+        if not label_refs:
+            return []
+        resolved = []
+        for r in label_refs:
+            name = self.resolve_label(r)
+            if name and name not in resolved:
+                resolved.append(name)
+        return resolved
+
+    def format_tags(self, label_refs: Optional[List[Any]]) -> str:
+        """Format resolved labels into '[@tag1, @tag2]' string."""
+        names = self.resolve_labels(label_refs)
+        if not names:
+            return ""
+        tags = [f"@{n.lstrip('@')}" for n in names]
+        return f"[{', '.join(tags)}]"
+
+
 class TaskHierarchyResolver:
     """
     Resolves multi-level task parent-child hierarchies from completed activity events.
@@ -217,13 +289,14 @@ class TaskHierarchyResolver:
                 task_info = {
                     "content": data.get("content", f"[Task {tid}]"),
                     "parent_id": str(data["parent_id"]) if data.get("parent_id") else None,
+                    "labels": data.get("labels", []),
                 }
                 self.task_cache[tid] = task_info
                 if self.cache:
                     self.cache.tasks[tid] = task_info
                 return task_info
             elif resp.status_code == 404:
-                fallback = {"content": f"[Task {tid}]", "parent_id": None}
+                fallback = {"content": f"[Task {tid}]", "parent_id": None, "labels": []}
                 self.task_cache[tid] = fallback
                 if self.cache:
                     self.cache.tasks[tid] = fallback
@@ -246,6 +319,7 @@ class TaskHierarchyResolver:
                 "event_id": str,
                 "date": str,               # YYYY-MM-DD
                 "time": str,               # HH:MM:SS
+                "labels": List[str],
             }
         """
         extra = event.get("extra_data", {})
@@ -258,6 +332,12 @@ class TaskHierarchyResolver:
         event_date_str = str(event.get("event_date", ""))
         date_part, time_part = format_event_datetime(event_date_str, tz=self.tz)
 
+        obj_id = str(event.get("object_id", ""))
+        cached_task = self.task_cache.get(obj_id, {})
+        raw_labels = extra.get("labels")
+        if not raw_labels:
+            raw_labels = cached_task.get("labels", [])
+
         if not parent_task_id:
             return {
                 "task_path": current_title,
@@ -268,6 +348,7 @@ class TaskHierarchyResolver:
                 "event_id": str(event.get("id", "")),
                 "date": date_part,
                 "time": time_part,
+                "labels": list(raw_labels or []),
             }
 
         ancestors: List[str] = []
@@ -297,6 +378,7 @@ class TaskHierarchyResolver:
             "event_id": str(event.get("id", "")),
             "date": date_part,
             "time": time_part,
+            "labels": list(raw_labels or []),
         }
 
 
@@ -305,15 +387,19 @@ def build_trace_records(
     project_resolver: ProjectTreeResolver,
     task_resolver: TaskHierarchyResolver,
     section_resolver: Optional[SectionResolver] = None,
+    label_resolver: Optional[LabelResolver] = None,
     progress_cb: Optional[Callable[[int, int], None]] = None,
 ) -> List[Dict[str, Any]]:
-    """Combine activity events with project and task resolvers into unified trace records."""
+    """Combine activity events with project, task, section, and label resolvers into unified trace records."""
     records: List[Dict[str, Any]] = []
     total = len(events)
     for idx, ev in enumerate(events, 1):
         t_res = task_resolver.resolve(ev)
         p_res = project_resolver.resolve(t_res["project_id"])
         sec_name = section_resolver.resolve(t_res.get("section_id")) if section_resolver else ""
+        raw_labels = t_res.get("labels", [])
+        resolved_labels = label_resolver.resolve_labels(raw_labels) if label_resolver else raw_labels
+
         records.append({
             "top_level_project": p_res["top_level_project"],
             "project_path": p_res["project_path"],
@@ -327,6 +413,7 @@ def build_trace_records(
             "parent_task_id": t_res["parent_task_id"],
             "project_id": t_res["project_id"],
             "event_id": t_res["event_id"],
+            "labels": resolved_labels,
         })
         if progress_cb and (idx % 20 == 0 or idx == total):
             progress_cb(idx, total)

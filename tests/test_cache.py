@@ -586,5 +586,68 @@ class TestCacheEdgeCases:
         assert cache.get_events_count() == 1
         cache.close()
 
+    def test_sqlite_labels_persistence(self, tmp_path):
+        db_file = tmp_path / "labels_test.db"
+        cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+
+        # 1. Bulk set labels via list
+        labels_list = [
+            {"id": "lbl_1", "name": "work", "color": "charcoal"},
+            {"id": "lbl_2", "name": "urgent", "color": "red"},
+        ]
+        cache.labels = labels_list
+        assert len(cache.labels) == 2
+        assert cache.labels["lbl_1"]["name"] == "work"
+        assert cache.labels["lbl_2"]["color"] == "red"
+
+        # 2. Individual insert via LabelCacheDict
+        cache.labels["lbl_3"] = {"id": "lbl_3", "name": "ops", "color": "blue"}
+        assert cache.labels["lbl_3"]["name"] == "ops"
+
+        cache.save()
+        cache.close()
+
+        # Re-open and verify persistence
+        reloaded = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+        assert len(reloaded.labels) == 3
+        assert reloaded.labels["lbl_1"]["name"] == "work"
+        assert reloaded.labels["lbl_2"]["name"] == "urgent"
+        assert reloaded.labels["lbl_3"]["name"] == "ops"
+        reloaded.close()
+
+    def test_trace_cache_json_labels(self, tmp_path):
+        json_file = tmp_path / "cache_labels.json"
+        cache = TraceCache(cache_file=str(json_file), enabled=True)
+        cache.labels = {"lbl_json": {"id": "lbl_json", "name": "json_label", "color": "green"}}
+        cache.save()
+
+        reloaded = TraceCache(cache_file=str(json_file), enabled=True)
+        assert reloaded.labels["lbl_json"]["name"] == "json_label"
+
+    def test_auto_migration_with_labels(self, tmp_path, monkeypatch):
+        json_file = tmp_path / "legacy_labels_cache.json"
+        db_file = tmp_path / "migrated_labels.db"
+
+        legacy_data = {
+            "projects": [{"id": "p1", "name": "Work"}],
+            "tasks": {"t1": {"content": "Task 1", "parent_id": None}},
+            "labels": {"lbl_1": {"id": "lbl_1", "name": "dev", "color": "teal"}},
+            "events": {
+                "e1": {"id": "e1", "event_date": "2026-09-01T12:00:00Z", "extra_data": {"content": "Task 1"}}
+            },
+        }
+        with open(json_file, "w", encoding="utf-8") as f:
+            json.dump(legacy_data, f)
+
+        import todoist_trace
+        monkeypatch.setattr(todoist_trace, "DEFAULT_JSON_CACHE_PATH", json_file)
+
+        cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+        assert cache.labels["lbl_1"]["name"] == "dev"
+        assert cache.labels["lbl_1"]["color"] == "teal"
+        assert len(cache.labels) == 1
+        cache.close()
+
+
 
 

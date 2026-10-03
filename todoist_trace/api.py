@@ -184,3 +184,42 @@ def fetch_section(token: str, section_id: str) -> Optional[Dict[str, Any]]:
         data = resp.json()
         return data if isinstance(data, dict) else None
     return None
+
+
+def fetch_labels(token: str) -> List[Dict[str, Any]]:
+    """
+    Fetch all labels from the Todoist API using strictly read-only HTTP GET.
+    Endpoint: https://api.todoist.com/api/v1/labels
+    """
+    url = "https://api.todoist.com/api/v1/labels"
+    headers = {
+        "Authorization": f"Bearer {token}",
+    }
+    all_labels: List[Dict[str, Any]] = []
+    cursor = None
+    while True:
+        params = {"cursor": cursor} if cursor else {}
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=15)
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Network error fetching labels: {e}") from e
+
+        if resp.status_code == 401:
+            raise ValueError("Invalid Todoist API token.")
+        if resp.status_code != 200:
+            raise RuntimeError(f"Todoist API returned HTTP {resp.status_code}: {resp.text}")
+
+        data = resp.json()
+        if isinstance(data, list):
+            all_labels.extend(data)
+            break
+        elif isinstance(data, dict):
+            results = data.get("results", [])
+            all_labels.extend(results)
+            cursor = data.get("next_cursor")
+            if not cursor:
+                break
+        else:
+            break
+
+    return all_labels

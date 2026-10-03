@@ -112,6 +112,13 @@ def parse_args(argv: Optional[list] = None) -> argparse.Namespace:
         default=False,
         help="Use clean plain-text progress updates (no in-place cursor overwrites)",
     )
+    parser.add_argument(
+        "--labels", "--include-labels",
+        dest="include_labels",
+        action="store_true",
+        default=None,
+        help="Include task labels in exports (default: false)",
+    )
     return parser.parse_args(argv)
 
 
@@ -175,6 +182,16 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
     no_color = bool(args.no_color or os.environ.get("NO_COLOR") or file_cfg.get("no_color", False))
     plain = bool(args.plain or os.environ.get("TODOIST_TRACE_PLAIN") or file_cfg.get("plain", False))
 
+    # 10. Labels
+    if args.include_labels is not None:
+        include_labels = bool(args.include_labels)
+    elif "TODOIST_TRACE_LABELS" in os.environ:
+        include_labels = os.environ["TODOIST_TRACE_LABELS"].lower() in ("1", "true", "yes")
+    elif "TODOIST_TRACE_INCLUDE_LABELS" in os.environ:
+        include_labels = os.environ["TODOIST_TRACE_INCLUDE_LABELS"].lower() in ("1", "true", "yes")
+    else:
+        include_labels = bool(file_cfg.get("include_labels", file_cfg.get("labels", False)))
+
     return {
         "token": token,
         "format": output_format,
@@ -192,4 +209,5 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         "quiet": quiet,
         "no_color": no_color,
         "plain": plain,
+        "include_labels": include_labels,
     }
