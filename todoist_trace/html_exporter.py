@@ -1946,11 +1946,11 @@ def generate_html(
       }});
 
       if (inlineOnly) {{
-        return text.replace(/\\n+/g, ' ');
+        return text.replace(/[\\\\r\\\\n]+/g, ' ');
       }}
 
       // 7. Multiline block rendering for descriptions (lists, paragraphs, line breaks)
-      const lines = text.split('\n');
+      const lines = text.split(/\\\\r?\\\\n/);
       const outBlocks = [];
       let inList = false;
       let listType = '';
