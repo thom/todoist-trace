@@ -290,13 +290,19 @@ class TaskHierarchyResolver:
                     "content": data.get("content", f"[Task {tid}]"),
                     "parent_id": str(data["parent_id"]) if data.get("parent_id") else None,
                     "labels": data.get("labels", []),
+                    "description": data.get("description", ""),
                 }
                 self.task_cache[tid] = task_info
                 if self.cache:
                     self.cache.tasks[tid] = task_info
                 return task_info
             elif resp.status_code == 404:
-                fallback = {"content": f"[Task {tid}]", "parent_id": None, "labels": []}
+                fallback = {
+                    "content": f"[Task {tid}]",
+                    "parent_id": None,
+                    "labels": [],
+                    "description": "",
+                }
                 self.task_cache[tid] = fallback
                 if self.cache:
                     self.cache.tasks[tid] = fallback
@@ -320,6 +326,7 @@ class TaskHierarchyResolver:
                 "date": str,               # YYYY-MM-DD
                 "time": str,               # HH:MM:SS
                 "labels": List[str],
+                "description": str,
             }
         """
         extra = event.get("extra_data", {})
@@ -338,6 +345,10 @@ class TaskHierarchyResolver:
         if not raw_labels:
             raw_labels = cached_task.get("labels", [])
 
+        description = extra.get("description")
+        if description is None:
+            description = cached_task.get("description", "")
+
         if not parent_task_id:
             return {
                 "task_path": current_title,
@@ -349,6 +360,7 @@ class TaskHierarchyResolver:
                 "date": date_part,
                 "time": time_part,
                 "labels": list(raw_labels or []),
+                "description": description or "",
             }
 
         ancestors: List[str] = []
@@ -379,6 +391,7 @@ class TaskHierarchyResolver:
             "date": date_part,
             "time": time_part,
             "labels": list(raw_labels or []),
+            "description": description or "",
         }
 
 
@@ -414,6 +427,7 @@ def build_trace_records(
             "project_id": t_res["project_id"],
             "event_id": t_res["event_id"],
             "labels": resolved_labels,
+            "description": t_res.get("description", ""),
         })
         if progress_cb and (idx % 20 == 0 or idx == total):
             progress_cb(idx, total)

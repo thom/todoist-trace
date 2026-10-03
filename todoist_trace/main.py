@@ -208,10 +208,11 @@ def main(argv: Optional[list] = None) -> int:
 
     # 6. Export records
     inc_labels = settings.get("include_labels", False)
+    inc_desc = settings.get("include_descriptions", False)
     out_path = settings["output"]
     out_fmt = settings["format"]
     if out_fmt == "csv":
-        export_csv(filtered_records, out_path, include_labels=inc_labels)
+        export_csv(filtered_records, out_path, include_labels=inc_labels, include_descriptions=inc_desc)
     else:
         export_markdown(
             filtered_records,
@@ -219,6 +220,7 @@ def main(argv: Optional[list] = None) -> int:
             style=settings["markdown_style"],
             task_style=settings["task_style"],
             include_labels=inc_labels,
+            include_descriptions=inc_desc,
         )
 
     reporter.finish_export(

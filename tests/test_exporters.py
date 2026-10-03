@@ -320,3 +320,33 @@ class TestExporters:
         assert "- Root Task" in md
         assert "  - Leaf Subtask [@urgent, @ops]" in md
 
+    def test_generate_csv_and_markdown_with_descriptions(self):
+        records = [
+            {
+                "top_level_project": "Work",
+                "project_path": "",
+                "section": "",
+                "date": "2026-10-02",
+                "time": "16:00:00",
+                "task_path": "Setup CI/CD",
+                "task_levels": ["Setup CI/CD"],
+                "description": "Configure GitHub Actions\nEnsure matrix build passes",
+            }
+        ]
+        # CSV with description
+        csv_out = generate_csv(records, include_descriptions=True)
+        assert "description" in csv_out.splitlines()[0]
+        assert "Configure GitHub Actions" in csv_out
+
+        # Markdown nested with description
+        md_out = generate_markdown(records, style="nested", task_style="nested", include_descriptions=True)
+        assert "- Setup CI/CD" in md_out
+        assert "  > Configure GitHub Actions" in md_out
+        assert "  > Ensure matrix build passes" in md_out
+
+        # Markdown flat with description
+        md_flat = generate_markdown(records, style="flat", task_style="flat", include_descriptions=True)
+        assert "- Setup CI/CD" in md_flat
+        assert "  > Configure GitHub Actions" in md_flat
+
+

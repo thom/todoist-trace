@@ -111,3 +111,28 @@ class TestCLIAndSettings:
         monkeypatch.setenv("TODOIST_TRACE_LABELS", "1")
         assert resolve_settings(args_def)["include_labels"] is True
 
+    def test_include_descriptions_flag_and_config(self, tmp_path, monkeypatch):
+        import json
+
+        # Default is False
+        args_def = parse_args([])
+        assert resolve_settings(args_def)["include_descriptions"] is False
+
+        # CLI flag overrides to True
+        args_flag = parse_args(["--descriptions"])
+        assert resolve_settings(args_flag)["include_descriptions"] is True
+
+        args_alias = parse_args(["--include-descriptions"])
+        assert resolve_settings(args_alias)["include_descriptions"] is True
+
+        # Config file support
+        cfg_file = tmp_path / "cfg_desc.json"
+        cfg_file.write_text(json.dumps({"token": "tok", "include_descriptions": True}), encoding="utf-8")
+        args_cfg = parse_args(["--config", str(cfg_file)])
+        assert resolve_settings(args_cfg)["include_descriptions"] is True
+
+        # Env var support
+        monkeypatch.setenv("TODOIST_TRACE_DESCRIPTIONS", "true")
+        assert resolve_settings(args_def)["include_descriptions"] is True
+
+

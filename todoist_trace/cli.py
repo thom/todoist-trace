@@ -119,6 +119,13 @@ def parse_args(argv: Optional[list] = None) -> argparse.Namespace:
         default=None,
         help="Include task labels in exports (default: false)",
     )
+    parser.add_argument(
+        "--descriptions", "--include-descriptions",
+        dest="include_descriptions",
+        action="store_true",
+        default=None,
+        help="Include task descriptions/notes in exports (default: false)",
+    )
     return parser.parse_args(argv)
 
 
@@ -182,7 +189,7 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
     no_color = bool(args.no_color or os.environ.get("NO_COLOR") or file_cfg.get("no_color", False))
     plain = bool(args.plain or os.environ.get("TODOIST_TRACE_PLAIN") or file_cfg.get("plain", False))
 
-    # 10. Labels
+    # 10. Extended metadata (labels & descriptions)
     if args.include_labels is not None:
         include_labels = bool(args.include_labels)
     elif "TODOIST_TRACE_LABELS" in os.environ:
@@ -191,6 +198,15 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         include_labels = os.environ["TODOIST_TRACE_INCLUDE_LABELS"].lower() in ("1", "true", "yes")
     else:
         include_labels = bool(file_cfg.get("include_labels", file_cfg.get("labels", False)))
+
+    if args.include_descriptions is not None:
+        include_descriptions = bool(args.include_descriptions)
+    elif "TODOIST_TRACE_DESCRIPTIONS" in os.environ:
+        include_descriptions = os.environ["TODOIST_TRACE_DESCRIPTIONS"].lower() in ("1", "true", "yes")
+    elif "TODOIST_TRACE_INCLUDE_DESCRIPTIONS" in os.environ:
+        include_descriptions = os.environ["TODOIST_TRACE_INCLUDE_DESCRIPTIONS"].lower() in ("1", "true", "yes")
+    else:
+        include_descriptions = bool(file_cfg.get("include_descriptions", file_cfg.get("descriptions", False)))
 
     return {
         "token": token,
@@ -210,4 +226,5 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         "no_color": no_color,
         "plain": plain,
         "include_labels": include_labels,
+        "include_descriptions": include_descriptions,
     }

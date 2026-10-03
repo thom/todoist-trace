@@ -442,3 +442,21 @@ class TestLabelResolver:
         assert resolver.format_tags(["@already_prefixed"]) == "[@already_prefixed]"
         assert resolver.format_tags([]) == ""
 
+    def test_resolve_event_with_description(self):
+        from todoist_trace.resolvers import TaskHierarchyResolver
+        resolver = TaskHierarchyResolver(token="dummy")
+        event = {
+            "id": "e_desc",
+            "object_id": "t_desc",
+            "event_date": "2026-10-02T10:00:00Z",
+            "parent_project_id": "p1",
+            "extra_data": {
+                "content": "Write docs",
+                "description": "Document CLI options and export formats",
+            },
+        }
+        res = resolver.resolve(event)
+        assert res["task_path"] == "Write docs"
+        assert res["description"] == "Document CLI options and export formats"
+
+
