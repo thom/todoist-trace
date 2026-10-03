@@ -517,6 +517,11 @@ class TestExporters:
         html_out = generate_html(records, title="Project Hierarchy Test")
         assert "buildProjectTree" in html_out
         assert "renderProjectNode" in html_out
+        assert "renderCollapsedProjectGroups" in html_out
+        assert "renderSubprojectHierarchy" in html_out
+        assert "tab-pstyle-nested" in html_out
+        assert "tab-pstyle-collapsed" in html_out
+        assert "setProjectStyle" in html_out
         assert ".top-project-group" in html_out
         assert ".subproject-group" in html_out
         assert "alpha-service" in html_out

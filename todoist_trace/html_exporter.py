@@ -961,11 +961,20 @@ def generate_html(
 
       <div class="filter-status">
         <span id="filter-counter">Showing {total_records} of {total_records} tasks</span>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 12px; color: var(--text-dim);">Task Style:</span>
-          <div class="view-switcher">
-            <button class="view-tab active" id="tab-style-nested" onclick="setTaskStyle('nested')">⊞ Nested Bullets</button>
-            <button class="view-tab" id="tab-style-flat" onclick="setTaskStyle('flat')">≡ Flat Path</button>
+        <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 12px; color: var(--text-dim);">Projects:</span>
+            <div class="view-switcher">
+              <button class="view-tab active" id="tab-pstyle-nested" onclick="setProjectStyle('nested')">⊞ Nested</button>
+              <button class="view-tab" id="tab-pstyle-collapsed" onclick="setProjectStyle('collapsed')">≡ Collapsed Path</button>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 12px; color: var(--text-dim);">Tasks:</span>
+            <div class="view-switcher">
+              <button class="view-tab active" id="tab-style-nested" onclick="setTaskStyle('nested')">⊞ Nested Bullets</button>
+              <button class="view-tab" id="tab-style-flat" onclick="setTaskStyle('flat')">≡ Flat Path</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1038,6 +1047,29 @@ def generate_html(
     function toggleTheme() {{
       const current = document.documentElement.getAttribute('data-theme') || 'dark';
       setTheme(current === 'dark' ? 'light' : 'dark');
+    }}
+
+    // Project Style Management (Nested Hierarchy vs Collapsed Path)
+    let currentProjectStyle = localStorage.getItem('todoist-trace-project-style') || 'nested';
+
+    function initProjectStyle() {{
+      setProjectStyle(currentProjectStyle, false);
+    }}
+
+    function setProjectStyle(style, shouldReRender = true) {{
+      currentProjectStyle = style;
+      localStorage.setItem('todoist-trace-project-style', style);
+      const btnNested = document.getElementById('tab-pstyle-nested');
+      const btnCollapsed = document.getElementById('tab-pstyle-collapsed');
+      if (btnNested && btnCollapsed) {{
+        btnNested.classList.toggle('active', style === 'nested');
+        btnCollapsed.classList.toggle('active', style === 'collapsed');
+      }}
+      if (shouldReRender) {{
+        renderTimelineView();
+        renderProjectsView();
+        renderTableView();
+      }}
     }}
 
     // Task Style Management (Nested Bullets vs Flat Path)
@@ -1228,7 +1260,6 @@ def generate_html(
         const sortedTopProjs = Object.keys(byTopProj).sort();
         sortedTopProjs.forEach(topProj => {{
           const topRecords = byTopProj[topProj];
-          const projectTree = buildProjectTree(topRecords);
 
           html += `
             <div class="top-project-group">
@@ -1240,7 +1271,7 @@ def generate_html(
                 <span class="top-project-count-badge">${{topRecords.length}} task${{topRecords.length === 1 ? '' : 's'}}</span>
               </div>
               <div class="top-project-content">
-                ${{renderProjectNode(projectTree, 0)}}
+                ${{renderSubprojectHierarchy(topRecords)}}
               </div>
             </div>
           `;
@@ -1539,6 +1570,57 @@ def generate_html(
       return html;
     }}
 
+    function renderCollapsedProjectGroups(records) {{
+      const pathMap = {{}};
+      records.forEach(r => {{
+        const p = r.project_path || '';
+        if (!pathMap[p]) pathMap[p] = [];
+        pathMap[p].push(r);
+      }});
+
+      let html = '';
+      if (pathMap['']) {{
+        if (Object.keys(pathMap).length > 1) {{
+          html += `
+            <div style="font-size: 11px; font-weight: 600; color: var(--text-dim); margin-bottom: 4px;">
+              (Direct Tasks)
+            </div>
+          `;
+        }}
+        html += renderTasksWithSections(pathMap['']);
+      }}
+
+      const sortedPaths = Object.keys(pathMap).filter(Boolean).sort();
+      for (const path of sortedPaths) {{
+        const recs = pathMap[path];
+        html += `
+          <div class="subproject-group depth-0">
+            <div class="subproject-header">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="subproject-hash">##</span>
+                <span class="subproject-title">${{escapeHtml(path)}}</span>
+              </div>
+              <span class="subproject-count-badge">${{recs.length}} task${{recs.length === 1 ? '' : 's'}}</span>
+            </div>
+            <div class="subproject-content">
+              ${{renderTasksWithSections(recs)}}
+            </div>
+          </div>
+        `;
+      }}
+
+      return html;
+    }}
+
+    function renderSubprojectHierarchy(topRecords) {{
+      if (currentProjectStyle === 'collapsed') {{
+        return renderCollapsedProjectGroups(topRecords);
+      }} else {{
+        const projectTree = buildProjectTree(topRecords);
+        return renderProjectNode(projectTree, 0);
+      }}
+    }}
+
     function filterByTag(tag) {{
       document.getElementById('search-box').value = `@${{tag.replace(/^@/, '')}}`;
       applyFilters();
@@ -1567,7 +1649,6 @@ def generate_html(
       let html = '';
       for (const proj of sortedTopProjs) {{
         const tasks = byProject[proj];
-        const projectTree = buildProjectTree(tasks);
 
         html += `
           <div class="day-group">
@@ -1580,7 +1661,7 @@ def generate_html(
               <span class="day-toggle-icon">▼</span>
             </div>
             <div class="day-content" style="padding: 10px 14px;">
-              ${{renderProjectNode(projectTree, 0)}}
+              ${{renderSubprojectHierarchy(tasks)}}
             </div>
           </div>
         `;
@@ -1783,6 +1864,7 @@ def generate_html(
     // Window Init
     window.addEventListener('DOMContentLoaded', () => {{
       initTheme();
+      initProjectStyle();
       initTaskStyle();
       initFilterDropdowns();
       applyFilters();
