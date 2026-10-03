@@ -54,6 +54,7 @@ from .resolvers import (
     TaskHierarchyResolver,
     build_trace_records,
     format_event_datetime,
+    format_priority,
 )
 
 __all__ = [
@@ -84,6 +85,7 @@ __all__ = [
     "fetch_sections",
     "filter_records",
     "format_event_datetime",
+    "format_priority",
     "format_task_bullets",
     "generate_csv",
     "generate_markdown",

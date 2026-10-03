@@ -251,6 +251,24 @@ class LabelResolver:
         return f"[{', '.join(tags)}]"
 
 
+def format_priority(priority_val: Optional[Any]) -> str:
+    """
+    Format Todoist priority integer (1-4) into standard p1-p4 code.
+    In Todoist API:
+      4 -> p1 (Urgent / Red)
+      3 -> p2 (High / Orange)
+      2 -> p3 (Medium / Blue)
+      1 -> p4 (Normal / Default / None)
+    """
+    if priority_val in (4, "4"):
+        return "p1"
+    elif priority_val in (3, "3"):
+        return "p2"
+    elif priority_val in (2, "2"):
+        return "p3"
+    return "p4"
+
+
 class TaskHierarchyResolver:
     """
     Resolves multi-level task parent-child hierarchies from completed activity events.
@@ -291,6 +309,7 @@ class TaskHierarchyResolver:
                     "parent_id": str(data["parent_id"]) if data.get("parent_id") else None,
                     "labels": data.get("labels", []),
                     "description": data.get("description", ""),
+                    "priority": data.get("priority", 1),
                 }
                 self.task_cache[tid] = task_info
                 if self.cache:
@@ -302,6 +321,7 @@ class TaskHierarchyResolver:
                     "parent_id": None,
                     "labels": [],
                     "description": "",
+                    "priority": 1,
                 }
                 self.task_cache[tid] = fallback
                 if self.cache:
@@ -349,6 +369,11 @@ class TaskHierarchyResolver:
         if description is None:
             description = cached_task.get("description", "")
 
+        raw_priority = extra.get("priority")
+        if raw_priority is None:
+            raw_priority = cached_task.get("priority")
+        priority_code = format_priority(raw_priority)
+
         if not parent_task_id:
             return {
                 "task_path": current_title,
@@ -361,6 +386,8 @@ class TaskHierarchyResolver:
                 "time": time_part,
                 "labels": list(raw_labels or []),
                 "description": description or "",
+                "priority": priority_code,
+                "raw_priority": raw_priority,
             }
 
         ancestors: List[str] = []
@@ -392,6 +419,8 @@ class TaskHierarchyResolver:
             "time": time_part,
             "labels": list(raw_labels or []),
             "description": description or "",
+            "priority": priority_code,
+            "raw_priority": raw_priority,
         }
 
 
@@ -428,6 +457,8 @@ def build_trace_records(
             "event_id": t_res["event_id"],
             "labels": resolved_labels,
             "description": t_res.get("description", ""),
+            "priority": t_res.get("priority", "p4"),
+            "raw_priority": t_res.get("raw_priority"),
         })
         if progress_cb and (idx % 20 == 0 or idx == total):
             progress_cb(idx, total)

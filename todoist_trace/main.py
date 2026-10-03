@@ -209,10 +209,17 @@ def main(argv: Optional[list] = None) -> int:
     # 6. Export records
     inc_labels = settings.get("include_labels", False)
     inc_desc = settings.get("include_descriptions", False)
+    inc_prio = settings.get("include_priorities", False)
     out_path = settings["output"]
     out_fmt = settings["format"]
     if out_fmt == "csv":
-        export_csv(filtered_records, out_path, include_labels=inc_labels, include_descriptions=inc_desc)
+        export_csv(
+            filtered_records,
+            out_path,
+            include_labels=inc_labels,
+            include_descriptions=inc_desc,
+            include_priorities=inc_prio,
+        )
     else:
         export_markdown(
             filtered_records,
@@ -221,6 +228,7 @@ def main(argv: Optional[list] = None) -> int:
             task_style=settings["task_style"],
             include_labels=inc_labels,
             include_descriptions=inc_desc,
+            include_priorities=inc_prio,
         )
 
     reporter.finish_export(
@@ -237,11 +245,14 @@ def main(argv: Optional[list] = None) -> int:
         for r in filtered_records[:3]:
             full_proj = f"{r['top_level_project']}" + (f" / {r['project_path']}" if r['project_path'] else "")
             sec_part = f" [{r['section']}]" if r.get('section') else ""
-            lbl_part = ""
+            extra_parts = []
+            if inc_prio and r.get("priority"):
+                extra_parts.append(f"[{r['priority']}]")
             if inc_labels and r.get("labels"):
                 tags_str = ", ".join(f"@{l.lstrip('@')}" for l in r["labels"])
-                lbl_part = f" [{tags_str}]"
-            reporter.print_text(f"  [{r['date']} {r['time']}] {full_proj}{sec_part} -> {r['task_path']}{lbl_part}")
+                extra_parts.append(f"[{tags_str}]")
+            meta_str = (" " + " ".join(extra_parts)) if extra_parts else ""
+            reporter.print_text(f"  [{r['date']} {r['time']}] {full_proj}{sec_part} -> {r['task_path']}{meta_str}")
 
     return 0
 

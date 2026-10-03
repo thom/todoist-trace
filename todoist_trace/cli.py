@@ -126,6 +126,13 @@ def parse_args(argv: Optional[list] = None) -> argparse.Namespace:
         default=None,
         help="Include task descriptions/notes in exports (default: false)",
     )
+    parser.add_argument(
+        "--priorities", "--include-priorities",
+        dest="include_priorities",
+        action="store_true",
+        default=None,
+        help="Include task priorities (p1-p4) in exports (default: false)",
+    )
     return parser.parse_args(argv)
 
 
@@ -208,6 +215,15 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
     else:
         include_descriptions = bool(file_cfg.get("include_descriptions", file_cfg.get("descriptions", False)))
 
+    if args.include_priorities is not None:
+        include_priorities = bool(args.include_priorities)
+    elif "TODOIST_TRACE_PRIORITIES" in os.environ:
+        include_priorities = os.environ["TODOIST_TRACE_PRIORITIES"].lower() in ("1", "true", "yes")
+    elif "TODOIST_TRACE_INCLUDE_PRIORITIES" in os.environ:
+        include_priorities = os.environ["TODOIST_TRACE_INCLUDE_PRIORITIES"].lower() in ("1", "true", "yes")
+    else:
+        include_priorities = bool(file_cfg.get("include_priorities", file_cfg.get("priorities", False)))
+
     return {
         "token": token,
         "format": output_format,
@@ -227,4 +243,5 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         "plain": plain,
         "include_labels": include_labels,
         "include_descriptions": include_descriptions,
+        "include_priorities": include_priorities,
     }

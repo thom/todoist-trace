@@ -460,3 +460,37 @@ class TestLabelResolver:
         assert res["description"] == "Document CLI options and export formats"
 
 
+class TestPriority:
+    """Test suite for format_priority and priority resolving."""
+
+    def test_format_priority(self):
+        from todoist_trace.resolvers import format_priority
+        assert format_priority(4) == "p1"
+        assert format_priority("4") == "p1"
+        assert format_priority(3) == "p2"
+        assert format_priority("3") == "p2"
+        assert format_priority(2) == "p3"
+        assert format_priority("2") == "p3"
+        assert format_priority(1) == "p4"
+        assert format_priority(None) == "p4"
+        assert format_priority("invalid") == "p4"
+
+    def test_resolve_event_with_priority(self):
+        from todoist_trace.resolvers import TaskHierarchyResolver
+        resolver = TaskHierarchyResolver(token="dummy")
+        event = {
+            "id": "e_prio",
+            "object_id": "t_prio",
+            "event_date": "2026-10-02T10:00:00Z",
+            "parent_project_id": "p1",
+            "extra_data": {
+                "content": "Emergency patch",
+                "priority": 4,
+            },
+        }
+        res = resolver.resolve(event)
+        assert res["task_path"] == "Emergency patch"
+        assert res["priority"] == "p1"
+        assert res["raw_priority"] == 4
+
+

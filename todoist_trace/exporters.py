@@ -13,11 +13,12 @@ def generate_csv(
     records: List[Dict[str, Any]],
     include_labels: bool = False,
     include_descriptions: bool = False,
+    include_priorities: bool = False,
 ) -> str:
     """
     Generate CSV formatted text for trace records according to RFC 4180.
     Headers: top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id
-    Optional dynamic columns: labels, description
+    Optional dynamic columns: priority, labels, description
     """
     output = io.StringIO()
     fieldnames = [
@@ -35,6 +36,8 @@ def generate_csv(
         fieldnames.append("labels")
     if include_descriptions:
         fieldnames.append("description")
+    if include_priorities:
+        fieldnames.append("priority")
 
     writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL, lineterminator="\n")
     writer.writerow(fieldnames)
@@ -55,6 +58,8 @@ def generate_csv(
             row.append(",".join(raw_lbls) if isinstance(raw_lbls, list) else str(raw_lbls))
         if include_descriptions:
             row.append(r.get("description", "") or "")
+        if include_priorities:
+            row.append(r.get("priority", "p4") or "p4")
         writer.writerow(row)
     return output.getvalue()
 
@@ -64,23 +69,38 @@ def export_csv(
     output_path: str,
     include_labels: bool = False,
     include_descriptions: bool = False,
+    include_priorities: bool = False,
 ) -> None:
     """Export trace records to a CSV file."""
     path = Path(output_path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
-    content = generate_csv(records, include_labels=include_labels, include_descriptions=include_descriptions)
+    content = generate_csv(
+        records,
+        include_labels=include_labels,
+        include_descriptions=include_descriptions,
+        include_priorities=include_priorities,
+    )
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
 
 
-def _format_label_badge(r: Dict[str, Any], include_labels: bool = False) -> str:
-    if not include_labels:
-        return ""
-    lbls = r.get("labels") or []
-    if not lbls:
-        return ""
-    tags = [f"@{lbl.lstrip('@')}" for lbl in lbls]
-    return f" [{', '.join(tags)}]"
+def _format_task_metadata(
+    r: Dict[str, Any],
+    include_labels: bool = False,
+    include_priorities: bool = False,
+) -> str:
+    """Format inline badges for priority and labels."""
+    parts = []
+    if include_priorities:
+        prio = r.get("priority")
+        if prio:
+            parts.append(f"[{prio}]")
+    if include_labels:
+        lbls = r.get("labels") or []
+        if lbls:
+            tags = [f"@{lbl.lstrip('@')}" for lbl in lbls]
+            parts.append(f"[{', '.join(tags)}]")
+    return (" " + " ".join(parts)) if parts else ""
 
 
 def _format_description_lines(desc: str, indent: str) -> List[str]:
@@ -103,12 +123,18 @@ def format_task_bullets(
     task_style: str = "nested",
     include_labels: bool = False,
     include_descriptions: bool = False,
+    include_priorities: bool = False,
 ) -> List[str]:
-    """Format tasks either as nested bullet hierarchy or flat slash paths."""
+    """Format tasks either as nested bullet hierarchy or flat slash paths with optional metadata."""
     if task_style == "flat":
         lines = []
         for r in records_in_group:
-            lines.append(f"- {r.get('task_path', '')}{_format_label_badge(r, include_labels)}")
+            meta = _format_task_metadata(
+                r,
+                include_labels=include_labels,
+                include_priorities=include_priorities,
+            )
+            lines.append(f"- {r.get('task_path', '')}{meta}")
             if include_descriptions and r.get("description"):
                 lines.extend(_format_description_lines(r["description"], indent=""))
         return lines
@@ -138,10 +164,14 @@ def format_task_bullets(
         res = []
         indent = "  " * depth
         for node in nodes.values():
-            badge = ""
+            meta = ""
             if node.record:
-                badge = _format_label_badge(node.record, include_labels)
-            res.append(f"{indent}- {node.title}{badge}")
+                meta = _format_task_metadata(
+                    node.record,
+                    include_labels=include_labels,
+                    include_priorities=include_priorities,
+                )
+            res.append(f"{indent}- {node.title}{meta}")
             if include_descriptions and node.record and node.record.get("description"):
                 res.extend(_format_description_lines(node.record["description"], indent=indent))
             if node.children:
@@ -157,6 +187,7 @@ def format_records_with_sections(
     task_style: str = "nested",
     include_labels: bool = False,
     include_descriptions: bool = False,
+    include_priorities: bool = False,
 ) -> List[str]:
     """
     Format records, grouping by section if any records have a section.
@@ -173,6 +204,7 @@ def format_records_with_sections(
             task_style=task_style,
             include_labels=include_labels,
             include_descriptions=include_descriptions,
+            include_priorities=include_priorities,
         )
 
     res: List[str] = []
@@ -194,6 +226,7 @@ def format_records_with_sections(
             task_style=task_style,
             include_labels=include_labels,
             include_descriptions=include_descriptions,
+            include_priorities=include_priorities,
         ))
 
     sec_h_level = min(parent_h_level + 1, 6)
@@ -208,6 +241,7 @@ def format_records_with_sections(
             task_style=task_style,
             include_labels=include_labels,
             include_descriptions=include_descriptions,
+            include_priorities=include_priorities,
         ))
 
     return res
@@ -219,6 +253,7 @@ def generate_markdown(
     task_style: str = "nested",
     include_labels: bool = False,
     include_descriptions: bool = False,
+    include_priorities: bool = False,
 ) -> str:
     """
     Format trace records into Markdown grouped by date and project hierarchy.
@@ -272,6 +307,7 @@ def generate_markdown(
                         task_style=task_style,
                         include_labels=include_labels,
                         include_descriptions=include_descriptions,
+                        include_priorities=include_priorities,
                     ))
                     lines.append("")
 
@@ -288,6 +324,7 @@ def generate_markdown(
                         task_style=task_style,
                         include_labels=include_labels,
                         include_descriptions=include_descriptions,
+                        include_priorities=include_priorities,
                     ))
                     lines.append("")
 
@@ -327,6 +364,7 @@ def generate_markdown(
                             task_style=task_style,
                             include_labels=include_labels,
                             include_descriptions=include_descriptions,
+                            include_priorities=include_priorities,
                         ))
                         lines.append("")
                     elif node.depth > 0 and node.children:
@@ -347,6 +385,7 @@ def export_markdown(
     task_style: str = "nested",
     include_labels: bool = False,
     include_descriptions: bool = False,
+    include_priorities: bool = False,
 ) -> None:
     """Export trace records to a Markdown file."""
     path = Path(output_path).expanduser()
@@ -357,6 +396,7 @@ def export_markdown(
         task_style=task_style,
         include_labels=include_labels,
         include_descriptions=include_descriptions,
+        include_priorities=include_priorities,
     )
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)

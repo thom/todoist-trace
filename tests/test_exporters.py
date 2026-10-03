@@ -349,4 +349,31 @@ class TestExporters:
         assert "- Setup CI/CD" in md_flat
         assert "  > Configure GitHub Actions" in md_flat
 
+    def test_generate_csv_and_markdown_with_priorities(self):
+        records = [
+            {
+                "top_level_project": "Work",
+                "project_path": "",
+                "section": "",
+                "date": "2026-10-02",
+                "time": "17:00:00",
+                "task_path": "Urgent Security Bug",
+                "task_levels": ["Urgent Security Bug"],
+                "labels": ["sec"],
+                "priority": "p1",
+            }
+        ]
+        # CSV with priority
+        csv_out = generate_csv(records, include_priorities=True)
+        assert csv_out.splitlines()[0] == "top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id,priority"
+        assert ",p1" in csv_out
+
+        # Markdown nested with priority
+        md_nested = generate_markdown(records, style="nested", task_style="nested", include_priorities=True, include_labels=True)
+        assert "- Urgent Security Bug [p1] [@sec]" in md_nested
+
+        # Markdown flat with priority
+        md_flat = generate_markdown(records, style="flat", task_style="flat", include_priorities=True, include_labels=True)
+        assert "- Urgent Security Bug [p1] [@sec]" in md_flat
+
 
