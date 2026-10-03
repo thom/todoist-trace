@@ -318,7 +318,6 @@ def run_export(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
             filtered_records,
             out_path,
             style=settings["markdown_style"],
-            task_style=settings["task_style"],
             include_labels=inc_labels,
             include_descriptions=inc_desc,
             include_priorities=inc_prio,

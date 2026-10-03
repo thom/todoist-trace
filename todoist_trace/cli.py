@@ -116,12 +116,6 @@ def _add_export_only_arguments(parser: argparse.ArgumentParser) -> None:
         help="Markdown project heading style: nested (#### admin / ##### email) or flat (#### admin/email) (default: nested)",
     )
     parser.add_argument(
-        "--task-style",
-        choices=["nested", "flat"],
-        default=None,
-        help="Markdown task bullet style: nested (bullet hierarchy) or flat (slash-separated) (default: nested)",
-    )
-    parser.add_argument(
         "--labels", "--include-labels",
         dest="include_labels",
         action="store_true",
@@ -269,9 +263,6 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
     # 4. Markdown Style
     markdown_style = (getattr(args, "markdown_style", None) or os.environ.get("TODOIST_TRACE_MARKDOWN_STYLE") or file_cfg.get("markdown_style") or "nested").lower()
 
-    # 4b. Task Style (nested bullet hierarchy or flat slash-separated)
-    task_style = (getattr(args, "task_style", None) or os.environ.get("TODOIST_TRACE_TASK_STYLE") or file_cfg.get("task_style") or "nested").lower()
-
     # 5. Dates
     start_date = getattr(args, "start_date", None) or os.environ.get("TODOIST_TRACE_START_DATE") or file_cfg.get("start_date")
     end_date = getattr(args, "end_date", None) or os.environ.get("TODOIST_TRACE_END_DATE") or file_cfg.get("end_date")
@@ -353,7 +344,6 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         "format": output_format,
         "category": category,
         "markdown_style": markdown_style,
-        "task_style": task_style,
         "start_date": start_date,
         "end_date": end_date,
         "output": output,

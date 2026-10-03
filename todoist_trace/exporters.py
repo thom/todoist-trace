@@ -146,27 +146,13 @@ def _format_description_lines(desc: str, indent: str) -> List[str]:
 
 def format_task_bullets(
     records_in_group: List[Dict[str, Any]],
-    task_style: str = "nested",
     include_labels: bool = False,
     include_descriptions: bool = False,
     include_priorities: bool = False,
     include_due_dates: bool = False,
+    **kwargs: Any,
 ) -> List[str]:
-    """Format tasks either as nested bullet hierarchy or flat slash paths with optional metadata."""
-    if task_style == "flat":
-        lines = []
-        for r in records_in_group:
-            meta = _format_task_metadata(
-                r,
-                include_labels=include_labels,
-                include_priorities=include_priorities,
-                include_due_dates=include_due_dates,
-            )
-            lines.append(f"- {r.get('task_path', '')}{meta}")
-            if include_descriptions and r.get("description"):
-                lines.extend(_format_description_lines(r["description"], indent=""))
-        return lines
-
+    """Format tasks as a nested bullet hierarchy with optional metadata."""
     class TaskNode:
         def __init__(self, title: str):
             self.title = title
@@ -213,11 +199,11 @@ def format_task_bullets(
 def format_records_with_sections(
     records: List[Dict[str, Any]],
     parent_h_level: int,
-    task_style: str = "nested",
     include_labels: bool = False,
     include_descriptions: bool = False,
     include_priorities: bool = False,
     include_due_dates: bool = False,
+    **kwargs: Any,
 ) -> List[str]:
     """
     Format records, grouping by section if any records have a section.
@@ -231,7 +217,6 @@ def format_records_with_sections(
     if not has_sections:
         return format_task_bullets(
             records,
-            task_style=task_style,
             include_labels=include_labels,
             include_descriptions=include_descriptions,
             include_priorities=include_priorities,
@@ -254,7 +239,6 @@ def format_records_with_sections(
     if unsectioned:
         res.extend(format_task_bullets(
             unsectioned,
-            task_style=task_style,
             include_labels=include_labels,
             include_descriptions=include_descriptions,
             include_priorities=include_priorities,
@@ -270,7 +254,6 @@ def format_records_with_sections(
         res.append(f"{hashes} {sec_name}")
         res.extend(format_task_bullets(
             sec_records,
-            task_style=task_style,
             include_labels=include_labels,
             include_descriptions=include_descriptions,
             include_priorities=include_priorities,
@@ -283,16 +266,15 @@ def format_records_with_sections(
 def generate_markdown(
     records: List[Dict[str, Any]],
     style: str = "nested",
-    task_style: str = "nested",
     include_labels: bool = False,
     include_descriptions: bool = False,
     include_priorities: bool = False,
     include_due_dates: bool = False,
+    task_style: Optional[str] = None,
 ) -> str:
     """
     Format trace records into Markdown grouped by date and project hierarchy.
     style: 'nested' (progressive headings) or 'flat' (slash-separated heading)
-    task_style: 'nested' (bullet hierarchy) or 'flat' (slash-separated tasks)
     """
     if not records:
         return ""
@@ -338,7 +320,6 @@ def generate_markdown(
                     lines.extend(format_records_with_sections(
                         paths_map[""],
                         parent_h_level=3,
-                        task_style=task_style,
                         include_labels=include_labels,
                         include_descriptions=include_descriptions,
                         include_priorities=include_priorities,
@@ -356,7 +337,6 @@ def generate_markdown(
                     lines.extend(format_records_with_sections(
                         recs,
                         parent_h_level=4,
-                        task_style=task_style,
                         include_labels=include_labels,
                         include_descriptions=include_descriptions,
                         include_priorities=include_priorities,
@@ -397,7 +377,6 @@ def generate_markdown(
                         lines.extend(format_records_with_sections(
                             node.records,
                             parent_h_level=h_level,
-                            task_style=task_style,
                             include_labels=include_labels,
                             include_descriptions=include_descriptions,
                             include_priorities=include_priorities,
@@ -419,11 +398,11 @@ def export_markdown(
     records: List[Dict[str, Any]],
     output_path: str,
     style: str = "nested",
-    task_style: str = "nested",
     include_labels: bool = False,
     include_descriptions: bool = False,
     include_priorities: bool = False,
     include_due_dates: bool = False,
+    task_style: Optional[str] = None,
 ) -> None:
     """Export trace records to a Markdown file."""
     path = Path(output_path).expanduser()
@@ -431,11 +410,11 @@ def export_markdown(
     content = generate_markdown(
         records,
         style=style,
-        task_style=task_style,
         include_labels=include_labels,
         include_descriptions=include_descriptions,
         include_priorities=include_priorities,
         include_due_dates=include_due_dates,
+        task_style=task_style,
     )
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)

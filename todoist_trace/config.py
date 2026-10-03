@@ -107,8 +107,6 @@ def load_config(custom_path: Optional[str] = None) -> Dict[str, Any]:
                             config["output"] = env_data["TODOIST_TRACE_OUTPUT"]
                         if "TODOIST_TRACE_MARKDOWN_STYLE" in env_data:
                             config["markdown_style"] = env_data["TODOIST_TRACE_MARKDOWN_STYLE"]
-                        if "TODOIST_TRACE_TASK_STYLE" in env_data:
-                            config["task_style"] = env_data["TODOIST_TRACE_TASK_STYLE"]
                         if "TODOIST_TRACE_START_DATE" in env_data:
                             config["start_date"] = env_data["TODOIST_TRACE_START_DATE"]
                         if "TODOIST_TRACE_END_DATE" in env_data:

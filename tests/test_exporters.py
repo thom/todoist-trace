@@ -132,15 +132,9 @@ class TestExporters:
                 "event_id": "e3",
             },
         ]
-        # Nested task style
-        md_nested = generate_markdown(records, style="nested", task_style="nested")
-        assert "- Sprint Deliverables\n  - Client Portal\n  - Services\n    - Database\n    - Auth" in md_nested
-
-        # Flat task style
-        md_flat = generate_markdown(records, style="nested", task_style="flat")
-        assert "- Sprint Deliverables / Services / Auth" in md_flat
-        assert "- Sprint Deliverables / Services / Database" in md_flat
-        assert "- Sprint Deliverables / Client Portal" in md_flat
+        # Always hierarchical outline
+        md = generate_markdown(records, style="nested")
+        assert "- Sprint Deliverables\n  - Client Portal\n  - Services\n    - Database\n    - Auth" in md
 
     def test_daily_overview_with_timezone_converted_records(self):
         """Events resolved in local timezone group under their correct local day heading."""
@@ -370,19 +364,19 @@ class TestExporters:
         assert "    > Important fix" in md_nested
         assert "    > Line 2 notes" in md_nested
 
-        # Flat style
+        # Flat project heading style (tasks remain hierarchical)
         md_flat = generate_markdown(
             records,
             style="flat",
-            task_style="flat",
             include_labels=True,
             include_descriptions=True,
             include_priorities=True,
             include_due_dates=True,
         )
-        assert "- Root Task / Leaf Subtask [p1] [@urgent, @ops] [Due: 2026-10-01, Done: 2026-10-02 (+1d overdue)]" in md_flat
-        assert "  > Important fix" in md_flat
-        assert "  > Line 2 notes" in md_flat
+        assert "- Root Task" in md_flat
+        assert "  - Leaf Subtask [p1] [@urgent, @ops] [Due: 2026-10-01, Done: 2026-10-02 (+1d overdue)]" in md_flat
+        assert "    > Important fix" in md_flat
+        assert "    > Line 2 notes" in md_flat
 
     def test_export_files_with_metadata(self, tmp_path):
         records = [
