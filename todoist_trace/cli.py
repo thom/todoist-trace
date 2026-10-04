@@ -168,8 +168,8 @@ def create_parser() -> argparse.ArgumentParser:
     # 2. export
     export_p = subparsers.add_parser(
         "export",
-        help="Export cached activity records to CSV or Markdown",
-        description="Filter and format cached records into Markdown or CSV reports (operates offline on local cache).",
+        help="Export cached activity records to CSV, Markdown, or HTML",
+        description="Filter and format cached records into CSV, Markdown, or HTML reports (operates offline on local cache).",
     )
     _add_common_arguments(export_p)
     _add_date_arguments(export_p)

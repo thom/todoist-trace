@@ -1,7 +1,6 @@
 """
 Persistent caching implementations for todoist-trace.
-Includes SQLite-backed caching (default) and legacy JSON caching with interval-aware
-range synchronization and auto-migration.
+Includes SQLite-backed caching with interval-aware range synchronization.
 """
 
 import json

@@ -2,7 +2,7 @@
 Unit tests for CLI argument parsing and configuration resolution.
 """
 
-from todoist_trace.cache import SQLiteTraceCache, TraceCache
+from todoist_trace.cache import SQLiteTraceCache
 from todoist_trace.cli import parse_args, resolve_settings
 
 

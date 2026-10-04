@@ -45,7 +45,7 @@ def run_status(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
     if cache_path.is_file():
         file_size_str = _format_size(cache_path.stat().st_size)
 
-    cache_mode = "SQLite" if str(cache_path).endswith((".db", ".sqlite")) else "JSON"
+    cache_mode = "SQLite"
     last_sync = cache.get_last_sync() or "Never"
     events_count = cache.get_events_count()
     projects_count = len(cache.projects)
@@ -601,7 +601,7 @@ def main(argv: Optional[list] = None) -> int:
         except Exception:
             pass
 
-    cache_mode = "SQLite" if settings.get("cache_file", "").endswith((".db", ".sqlite")) else "JSON"
+    cache_mode = "SQLite"
     cache_desc = f"{settings.get('cache_file')} ({cache_mode})" if settings.get("cache_enabled") else "Disabled"
 
     if command in ("export", "run"):
@@ -612,7 +612,7 @@ def main(argv: Optional[list] = None) -> int:
         else:
             fmt_desc = "CSV"
     else:
-        fmt_desc = f"SQLite Cache ({cache_mode})"
+        fmt_desc = "SQLite Cache"
 
     reporter.print_banner(
         date_range_desc=date_range_desc,
