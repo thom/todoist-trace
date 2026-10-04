@@ -386,4 +386,47 @@ class TestSubcommandsAndStages:
         assert "client-*" in settings["categories"]["work"]
         assert "hobby" in settings["categories"]["personal"]
 
+    def test_run_sync_always_fetches_live_projects(self, tmp_path, monkeypatch):
+        from unittest.mock import MagicMock
+        from todoist_trace.cache import SQLiteTraceCache
+        from todoist_trace.main import run_sync
+        from todoist_trace.progress import FancyProgressReporter
+
+        db_path = tmp_path / "sync_projects.db"
+        cache = SQLiteTraceCache(cache_file=str(db_path), enabled=True)
+        # Prepopulate with cached projects
+        cache.projects = [{"id": "p100", "name": "Initial Project", "is_archived": False}]
+        assert cache.has_projects_cached() is True
+
+        mock_fetch_projects = MagicMock(return_value=[
+            {"id": "p100", "name": "Initial Project", "is_archived": True, "parent_id": None},
+            {"id": "p200", "name": "New Project", "is_archived": False, "parent_id": None},
+        ])
+        mock_fetch_sections = MagicMock(return_value=[])
+        mock_fetch_labels = MagicMock(return_value=[])
+        mock_fetch_activities = MagicMock(return_value=[])
+
+        import sys
+        main_mod = sys.modules["todoist_trace.main"]
+
+        monkeypatch.setattr(main_mod, "fetch_projects", mock_fetch_projects)
+        monkeypatch.setattr(main_mod, "fetch_sections", mock_fetch_sections)
+        monkeypatch.setattr(main_mod, "fetch_labels", mock_fetch_labels)
+        monkeypatch.setattr(main_mod, "fetch_completed_activities", mock_fetch_activities)
+
+        reporter = FancyProgressReporter(quiet=True)
+        settings = {
+            "token": "mock_token",
+            "cache_file": str(db_path),
+            "cache_enabled": True,
+            "refresh": False,
+            "start_date": None,
+            "end_date": None,
+        }
+
+        ret = run_sync(settings, reporter, cache)
+        assert ret == 0
+        mock_fetch_projects.assert_called_once()
+        assert len(cache.projects) == 2
+
 

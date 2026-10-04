@@ -101,51 +101,40 @@ def run_sync(settings: Dict[str, Any], reporter: FancyProgressReporter, cache: A
 
     refresh = settings.get("refresh", False)
 
-    # 1. Fetch or load projects
-    has_projects = cache.has_projects_cached() if hasattr(cache, "has_projects_cached") else bool(cache.projects)
-    if cache.enabled and has_projects and not refresh:
-        reporter.start_projects(cached=True, count=len(cache.projects))
-        projects = cache.projects
-    else:
-        reporter.start_projects(cached=False)
-        try:
-            projects = fetch_projects(
-                token,
-                progress_cb=lambda active, archived: reporter.update_projects(active, archived),
-            )
-            if cache.enabled:
-                cache.projects = projects
-        except (ValueError, RuntimeError) as e:
-            sys.stderr.write(f"Error: {e}\n")
-            return 1
+    # 1. Fetch projects
+    reporter.start_projects(cached=False)
+    try:
+        projects = fetch_projects(
+            token,
+            progress_cb=lambda active, archived: reporter.update_projects(active, archived),
+        )
+        if cache.enabled:
+            cache.projects = projects
+    except (ValueError, RuntimeError) as e:
+        sys.stderr.write(f"Error: {e}\n")
+        return 1
 
-        active = [p for p in projects if not p.get("is_archived", False) and not p.get("is_deleted", False)]
-        archived = [p for p in projects if p.get("is_archived", False)]
-        reporter.finish_projects(len(active), len(archived))
+    active = [p for p in projects if not p.get("is_archived", False) and not p.get("is_deleted", False)]
+    archived = [p for p in projects if p.get("is_archived", False)]
+    reporter.finish_projects(len(active), len(archived))
 
     # 2. Preload sections
-    if cache.enabled and hasattr(cache, "sections") and cache.sections and not refresh:
-        sections = cache.sections
-    else:
-        try:
-            sections_list = fetch_sections(token)
-            if cache.enabled:
-                cache.sections = sections_list
-            sections = cache.sections if cache.enabled else {s["id"]: s for s in sections_list if s.get("id")}
-        except Exception:
-            sections = cache.sections if (cache.enabled and hasattr(cache, "sections")) else {}
+    try:
+        sections_list = fetch_sections(token)
+        if cache.enabled:
+            cache.sections = sections_list
+        sections = cache.sections if cache.enabled else {s["id"]: s for s in sections_list if s.get("id")}
+    except Exception:
+        sections = cache.sections if (cache.enabled and hasattr(cache, "sections")) else {}
 
     # 3. Preload labels
-    if cache.enabled and hasattr(cache, "labels") and cache.labels and not refresh:
-        labels = cache.labels
-    else:
-        try:
-            labels_list = fetch_labels(token)
-            if cache.enabled:
-                cache.labels = labels_list
-            labels = cache.labels if cache.enabled else {l["id"]: l for l in labels_list if l.get("id")}
-        except Exception:
-            labels = cache.labels if (cache.enabled and hasattr(cache, "labels")) else {}
+    try:
+        labels_list = fetch_labels(token)
+        if cache.enabled:
+            cache.labels = labels_list
+        labels = cache.labels if cache.enabled else {l["id"]: l for l in labels_list if l.get("id")}
+    except Exception:
+        labels = cache.labels if (cache.enabled and hasattr(cache, "labels")) else {}
 
     # 4. Fetch completed activities (gap-filling range-aware sync)
     req_start = settings.get("start_date")
