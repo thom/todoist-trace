@@ -1710,7 +1710,7 @@ def generate_html(
               </div>
               <div class="date-range-actions">
                 <button type="button" class="btn btn-sm" id="btn-clear-date" onclick="clearDateRange()">Clear</button>
-                <button type="button" class="btn btn-sm btn-primary" onclick="applyCustomDateRange()">Apply</button>
+                <button type="button" class="btn btn-sm btn-primary" onclick="applyCustomDateRange(true)">Done</button>
               </div>
             </div>
           </div>
@@ -2064,9 +2064,7 @@ def generate_html(
           calHover = null;
           if (dateTo) dateTo.value = calEnd;
           renderCalendar();
-          setTimeout(() => {{
-            applyCustomDateRange();
-          }}, 160);
+          applyCustomDateRange(false);
         }}
       }}
     }}
@@ -2119,7 +2117,7 @@ def generate_html(
       if (!preview) return;
 
       if (calStart && calEnd) {{
-        preview.textContent = `${{calStart}} → ${{calEnd}}`;
+        preview.textContent = `${{calStart}} → ${{calEnd}} (Applied)`;
       }} else if (calStart && calHover && calHover >= calStart) {{
         preview.textContent = `${{calStart}} → ${{calHover}} (click to set)`;
       }} else if (calStart) {{
@@ -2134,7 +2132,7 @@ def generate_html(
       const dateFrom = document.getElementById('date-from');
       const dateTo = document.getElementById('date-to');
       if (dateFrom && dateFrom.value && dateTo && dateTo.value) {{
-        applyCustomDateRange();
+        applyCustomDateRange(false);
       }}
     }}
 
@@ -2229,7 +2227,7 @@ def generate_html(
       applyFilters();
     }}
 
-    function applyCustomDateRange() {{
+    function applyCustomDateRange(shouldClose = true) {{
       const dateFrom = document.getElementById('date-from');
       const dateTo = document.getElementById('date-to');
       const rangeLabel = document.getElementById('date-range-label');
@@ -2268,12 +2266,14 @@ def generate_html(
       }}
 
       syncCalendarFromInputs();
-      closeAllDropdowns();
+      if (shouldClose) {{
+        closeAllDropdowns();
+      }}
       applyFilters();
     }}
 
     function onDateRangeChange() {{
-      applyCustomDateRange();
+      applyCustomDateRange(false);
     }}
 
     function clearDateRange() {{
@@ -2291,7 +2291,6 @@ def generate_html(
       if (rangeLabel) rangeLabel.textContent = 'Custom Range';
       activeDayFilter = null;
       updatePresetPills('all');
-      closeAllDropdowns();
       applyFilters();
     }}
 
