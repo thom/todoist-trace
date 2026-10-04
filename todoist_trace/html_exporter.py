@@ -1680,20 +1680,20 @@ def generate_html(
             <span class="date-range-label" id="date-range-label">Custom Range</span>
             <span class="multiselect-arrow">▾</span>
           </button>
-          <div class="multiselect-menu date-range-menu">
+          <div class="multiselect-menu date-range-menu" onclick="event.stopPropagation()">
             <div class="date-range-header">
               <div class="date-range-title">Custom Date Range</div>
               <div class="date-range-selected-preview" id="date-range-preview">Click start date, then end date</div>
             </div>
             <div class="cal-nav-bar">
               <div style="display: flex; gap: 4px;">
-                <button type="button" class="cal-nav-btn" onclick="changeCalMonth(-12)" title="Previous Year">«</button>
-                <button type="button" class="cal-nav-btn" onclick="changeCalMonth(-1)" title="Previous Month">‹</button>
+                <button type="button" class="cal-nav-btn" onclick="changeCalMonth(-12, event)" title="Previous Year">«</button>
+                <button type="button" class="cal-nav-btn" onclick="changeCalMonth(-1, event)" title="Previous Month">‹</button>
               </div>
               <span style="font-size: 11px; font-weight: 600; color: var(--text-dim);">Pick Start &amp; End Dates</span>
               <div style="display: flex; gap: 4px;">
-                <button type="button" class="cal-nav-btn" onclick="changeCalMonth(1)" title="Next Month">›</button>
-                <button type="button" class="cal-nav-btn" onclick="changeCalMonth(12)" title="Next Year">»</button>
+                <button type="button" class="cal-nav-btn" onclick="changeCalMonth(1, event)" title="Next Month">›</button>
+                <button type="button" class="cal-nav-btn" onclick="changeCalMonth(12, event)" title="Next Year">»</button>
               </div>
             </div>
             <div class="cal-dual-container" id="cal-dual-container"></div>
@@ -1951,7 +1951,8 @@ def generate_html(
       renderCalendar();
     }}
 
-    function changeCalMonth(delta) {{
+    function changeCalMonth(delta, event) {{
+      if (event && event.stopPropagation) event.stopPropagation();
       if (calViewYear === null || calViewMonth === null) initCalendarState();
       calViewMonth += delta;
       while (calViewMonth < 0) {{
@@ -2020,7 +2021,7 @@ def generate_html(
             classes.push('cal-today');
           }}
 
-          cellsHtml += `<div class="${{classes.join(' ')}}" data-date="${{dateStr}}" onclick="onCalDayClick('${{dateStr}}')" onmouseenter="onCalDayHover('${{dateStr}}')" title="${{dateStr}}">${{d}}</div>`;
+          cellsHtml += `<div class="${{classes.join(' ')}}" data-date="${{dateStr}}" onclick="onCalDayClick('${{dateStr}}', event)" onmouseenter="onCalDayHover('${{dateStr}}')" title="${{dateStr}}">${{d}}</div>`;
         }}
 
         const weekdaysHtml = WEEKDAY_NAMES.map(w => `<div>${{w}}</div>`).join('');
@@ -2038,7 +2039,8 @@ def generate_html(
       updateCalPreviewText();
     }}
 
-    function onCalDayClick(dateStr) {{
+    function onCalDayClick(dateStr, event) {{
+      if (event && event.stopPropagation) event.stopPropagation();
       const dateFrom = document.getElementById('date-from');
       const dateTo = document.getElementById('date-to');
 
@@ -2048,6 +2050,7 @@ def generate_html(
         calHover = null;
         if (dateFrom) dateFrom.value = calStart;
         if (dateTo) dateTo.value = '';
+        renderCalendar();
       }} else if (calStart && !calEnd) {{
         if (dateStr < calStart) {{
           calStart = dateStr;
@@ -2055,13 +2058,17 @@ def generate_html(
           calHover = null;
           if (dateFrom) dateFrom.value = calStart;
           if (dateTo) dateTo.value = '';
+          renderCalendar();
         }} else {{
           calEnd = dateStr;
           calHover = null;
           if (dateTo) dateTo.value = calEnd;
+          renderCalendar();
+          setTimeout(() => {{
+            applyCustomDateRange();
+          }}, 180);
         }}
       }}
-      renderCalendar();
     }}
 
     function onCalDayHover(dateStr) {{
@@ -2362,7 +2369,8 @@ def generate_html(
     }}
 
     document.addEventListener('click', (e) => {{
-      if (!e.target || !e.target.closest || !e.target.closest('.multiselect')) {{
+      if (!e.target || !document.body.contains(e.target)) return;
+      if (!e.target.closest || !e.target.closest('.multiselect')) {{
         closeAllDropdowns();
       }}
     }});
