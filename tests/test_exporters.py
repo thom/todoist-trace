@@ -874,6 +874,48 @@ if (cardP4.includes("badge-p4") || cardP4.includes("P4")) {
         assert '"custom-work*"' in html_out
         assert "getRecordCategory" in html_out
 
+    def test_generate_html_projects_view_dates_and_grouping_switcher(self):
+        from todoist_trace.exporters import generate_html
+
+        records = [
+            {
+                "top_level_project": "work",
+                "project_path": "alpha-service",
+                "project_levels": ["alpha-service"],
+                "section": "sprint-1",
+                "date": "2026-10-02",
+                "time": "14:20:00",
+                "task_path": "Deploy API gateway",
+                "task_levels": ["Deploy API gateway"],
+                "priority": "p2",
+            },
+            {
+                "top_level_project": "personal",
+                "project_path": "reading",
+                "project_levels": ["reading"],
+                "section": "",
+                "date": "2026-10-01",
+                "time": "20:00:00",
+                "task_path": "Read chapter 4",
+                "task_levels": ["Read chapter 4"],
+                "priority": "p4",
+            },
+        ]
+        html_out = generate_html(records, title="Projects View Test")
+
+        # Project view grouping toolbar and buttons
+        assert "projects-view-toolbar" in html_out
+        assert 'id="btn-group-project"' in html_out
+        assert 'id="btn-group-hierarchy"' in html_out
+        assert "setProjectsGrouping" in html_out
+        assert "projectsGrouping" in html_out
+
+        # Task completion date badge support in projects view
+        assert ".badge-date" in html_out
+        assert "badge-date" in html_out
+        assert "showDate" in html_out
+
+
 
 
 

@@ -967,6 +967,27 @@ def generate_html(
       color: var(--accent);
     }}
 
+    .badge-date {{
+      font-size: 11px;
+      font-family: monospace;
+      font-weight: 600;
+      color: var(--text-muted);
+      background-color: var(--bg-card-subtle);
+      border: 1px solid var(--border);
+      padding: 1px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }}
+
+    .projects-view-toolbar {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }}
+
     .task-desc {{
       font-size: 12px;
       color: var(--text-muted);
@@ -1226,6 +1247,16 @@ def generate_html(
 
     <!-- Projects View Container -->
     <div id="view-projects" class="view-section">
+      <div class="projects-view-toolbar">
+        <div style="display: inline-flex; align-items: center; gap: 8px;">
+          <span style="font-size: 12px; font-weight: 600; color: var(--text-muted);">Grouping:</span>
+          <div class="view-switcher" id="projects-grouping-switcher">
+            <button class="view-tab active" id="btn-group-project" onclick="setProjectsGrouping('project')" title="Flat list of specific projects with parent breadcrumb">By Project</button>
+            <button class="view-tab" id="btn-group-hierarchy" onclick="setProjectsGrouping('hierarchy')" title="Nested 3-tier hierarchy: Category › Parent Project › Subprojects">By Hierarchy</button>
+          </div>
+        </div>
+        <div id="projects-meta-summary" style="font-size: 12px; color: var(--text-dim);"></div>
+      </div>
       <div id="projects-container"></div>
     </div>
 
@@ -1840,7 +1871,7 @@ def generate_html(
       return count;
     }}
 
-    function renderTaskItemCard(title, t, isSubtask = false) {{
+    function renderTaskItemCard(title, t, isSubtask = false, showDate = false) {{
       let prioBadge = '';
       if (t.priority && t.priority.toLowerCase() !== 'p4') {{
         prioBadge = `<span class="badge badge-${{t.priority.toLowerCase()}}">${{t.priority.toUpperCase()}}</span>`;
@@ -1854,6 +1885,11 @@ def generate_html(
       let labelsBadges = '';
       if (t.labels && t.labels.length > 0) {{
         labelsBadges = t.labels.map(l => `<span class="badge badge-label" onclick="filterByTag('${{escapeHtml(l)}}')">@${{escapeHtml(l.replace(/^@/, ''))}}</span>`).join(' ');
+      }}
+
+      let dateBadge = '';
+      if (showDate && t.date) {{
+        dateBadge = `<span class="badge badge-date" title="Completed on ${{escapeHtml(t.date)}}">${{escapeHtml(t.date)}}</span>`;
       }}
 
       let descHtml = '';
@@ -1876,6 +1912,7 @@ def generate_html(
               ${{prioBadge}}
               ${{dueBadge}}
               ${{labelsBadges}}
+              ${{dateBadge}}
               <span class="task-time">${{escapeHtml(t.time || '')}}</span>
             </div>
           </div>
@@ -1884,7 +1921,7 @@ def generate_html(
       `;
     }}
 
-    function renderTaskTree(nodes, depth = 0) {{
+    function renderTaskTree(nodes, depth = 0, showDate = false) {{
       let html = '<div class="task-tree">';
       for (const node of Object.values(nodes)) {{
         const hasChildren = Object.keys(node.children).length > 0;
@@ -1894,7 +1931,7 @@ def generate_html(
 
         if (hasRecords) {{
           node.records.forEach(r => {{
-            html += renderTaskItemCard(node.title, r, depth > 0);
+            html += renderTaskItemCard(node.title, r, depth > 0, showDate);
           }});
         }} else {{
           const subtaskCount = countTotalLeaves(node);
@@ -1916,7 +1953,7 @@ def generate_html(
         if (hasChildren) {{
           html += `
             <div class="task-children">
-              ${{renderTaskTree(node.children, depth + 1)}}
+              ${{renderTaskTree(node.children, depth + 1, showDate)}}
             </div>
           `;
         }}
@@ -1974,13 +2011,13 @@ def generate_html(
       return count;
     }}
 
-    function renderTasksWithSections(records) {{
+    function renderTasksWithSections(records, showDate = false) {{
       if (!records || records.length === 0) return '';
 
       const hasSections = records.some(r => Boolean(r.section));
       if (!hasSections) {{
         const tree = buildTaskTree(records);
-        return renderTaskTree(tree, 0);
+        return renderTaskTree(tree, 0, showDate);
       }}
 
       // Group by section: empty/unsectioned first
@@ -1994,7 +2031,7 @@ def generate_html(
       let html = '';
       if (sectionMap['']) {{
         const tree = buildTaskTree(sectionMap['']);
-        html += renderTaskTree(tree, 0);
+        html += renderTaskTree(tree, 0, showDate);
       }}
 
       for (const [sec, recs] of Object.entries(sectionMap)) {{
@@ -2008,7 +2045,7 @@ def generate_html(
               </div>
               <span class="section-count-badge">${{recs.length}} task${{recs.length === 1 ? '' : 's'}}</span>
             </div>
-            ${{renderTaskTree(buildTaskTree(recs), 0)}}
+            ${{renderTaskTree(buildTaskTree(recs), 0, showDate)}}
           </div>
         `;
       }}
@@ -2016,7 +2053,7 @@ def generate_html(
       return html;
     }}
 
-    function renderProjectNode(node, depth = 0) {{
+    function renderProjectNode(node, depth = 0, showDate = false) {{
       let html = '';
 
       // Render direct tasks under this node
@@ -2028,7 +2065,7 @@ def generate_html(
             </div>
           `;
         }}
-        html += renderTasksWithSections(node.records);
+        html += renderTasksWithSections(node.records, showDate);
       }}
 
       // Render child subprojects
@@ -2047,7 +2084,7 @@ def generate_html(
               <span class="subproject-count-badge">${{totalChildTasks}} task${{totalChildTasks === 1 ? '' : 's'}}</span>
             </div>
             <div class="subproject-content">
-              ${{renderProjectNode(child, depth + 1)}}
+              ${{renderProjectNode(child, depth + 1, showDate)}}
             </div>
           </div>
         `;
@@ -2056,9 +2093,9 @@ def generate_html(
       return html;
     }}
 
-    function renderSubprojectHierarchy(topRecords) {{
+    function renderSubprojectHierarchy(topRecords, showDate = false) {{
       const projectTree = buildProjectTree(topRecords);
-      return renderProjectNode(projectTree, 0);
+      return renderProjectNode(projectTree, 0, showDate);
     }}
 
     function filterByTag(tag) {{
@@ -2066,51 +2103,165 @@ def generate_html(
       applyFilters();
     }}
 
+    let projectsGrouping = 'project';
+
+    function setProjectsGrouping(mode) {{
+      projectsGrouping = mode;
+      const btnProject = document.getElementById('btn-group-project');
+      const btnHierarchy = document.getElementById('btn-group-hierarchy');
+      if (btnProject) btnProject.classList.toggle('active', mode === 'project');
+      if (btnHierarchy) btnHierarchy.classList.toggle('active', mode === 'hierarchy');
+      renderProjectsView();
+    }}
+
     // Render Projects View
     function renderProjectsView() {{
       const container = document.getElementById('projects-container');
       if (!container) return;
 
+      const summaryEl = document.getElementById('projects-meta-summary');
+
       if (filteredRecords.length === 0) {{
         container.innerHTML = '<div class="empty-state">No matching tasks found.</div>';
+        if (summaryEl) summaryEl.textContent = '';
         updateDayToggleButton();
         return;
       }}
 
-      // Group by top-level project
-      const byProject = {{}};
+      // Mode 1: By Specific Project (Flat Cards with parent breadcrumb)
+      if (projectsGrouping === 'project') {{
+        const byProject = {{}};
+        filteredRecords.forEach(r => {{
+          const specific = getRecordProject(r);
+          const parent = r.top_level_project || '';
+          let key = specific;
+          if (parent && parent !== specific) {{
+            key = `${{parent}} › ${{specific}}`;
+          }}
+          if (!byProject[key]) {{
+            byProject[key] = {{
+              key: key,
+              parentName: parent,
+              specificName: specific,
+              category: getRecordCategory(r),
+              records: [],
+            }};
+          }}
+          byProject[key].records.push(r);
+        }});
+
+        const sortedKeys = Object.keys(byProject).sort((a, b) => {{
+          const diff = byProject[b].records.length - byProject[a].records.length;
+          if (diff !== 0) return diff;
+          return a.localeCompare(b);
+        }});
+
+        if (summaryEl) {{
+          summaryEl.textContent = `Showing ${{sortedKeys.length}} projects (${{filteredRecords.length}} tasks)`;
+        }}
+
+        let html = '';
+        for (const key of sortedKeys) {{
+          const item = byProject[key];
+          const tasks = [...item.records].sort((a, b) => {{
+            const dtA = (a.date || '') + ' ' + (a.time || '');
+            const dtB = (b.date || '') + ' ' + (b.time || '');
+            return dtB.localeCompare(dtA);
+          }});
+          const collapsedCls = isAllDaysCollapsed ? ' collapsed' : '';
+
+          let titleHtml = '';
+          if (item.parentName && item.parentName !== item.specificName) {{
+            titleHtml = `<span style="font-size: 12px; color: var(--text-dim); margin-right: 4px;">${{escapeHtml(item.parentName)}} ›</span><span style="font-weight: 700; font-size: 14px;">${{escapeHtml(item.specificName)}}</span>`;
+          }} else {{
+            titleHtml = `<span style="font-weight: 700; font-size: 14px;">${{escapeHtml(item.specificName)}}</span>`;
+          }}
+
+          html += `
+            <div class="day-group${{collapsedCls}}">
+              <div class="day-header" onclick="toggleDayAccordion(this)">
+                <div class="day-title">
+                  <span class="subproject-icon" style="margin-right: 4px;">${{ICONS.hash}}</span>
+                  ${{titleHtml}}
+                  <span class="day-count-badge">${{tasks.length}} task${{tasks.length === 1 ? '' : 's'}}</span>
+                </div>
+                <span class="day-toggle-icon">▼</span>
+              </div>
+              <div class="day-content" style="padding: 10px 14px;">
+                ${{renderTasksWithSections(tasks, true)}}
+              </div>
+            </div>
+          `;
+        }}
+        container.innerHTML = html;
+        updateDayToggleButton();
+        return;
+      }}
+
+      // Mode 2: By Hierarchy (Category › Parent Project › Subprojects)
+      const byCategory = {{}};
       filteredRecords.forEach(r => {{
-        const p = r.top_level_project || 'Uncategorized';
-        if (!byProject[p]) byProject[p] = [];
-        byProject[p].push(r);
+        const cat = getRecordCategory(r);
+        const topProj = r.top_level_project || 'Uncategorized';
+        if (!byCategory[cat]) byCategory[cat] = {{}};
+        if (!byCategory[cat][topProj]) byCategory[cat][topProj] = [];
+        byCategory[cat][topProj].push(r);
       }});
 
-      const sortedTopProjs = Object.keys(byProject).sort((a, b) => {{
-        const diff = byProject[b].length - byProject[a].length;
-        if (diff !== 0) return diff;
-        return a.localeCompare(b);
-      }});
+      const catOrder = ['work', 'personal', 'others'];
+      const extraCats = Object.keys(byCategory).filter(c => !catOrder.includes(c)).sort();
+      const allCats = [...catOrder.filter(c => byCategory[c]), ...extraCats];
+
+      let totalParents = 0;
+      allCats.forEach(c => {{ totalParents += Object.keys(byCategory[c]).length; }});
+
+      if (summaryEl) {{
+        summaryEl.textContent = `Showing ${{allCats.length}} categories · ${{totalParents}} parent projects (${{filteredRecords.length}} tasks)`;
+      }}
 
       let html = '';
-      for (const proj of sortedTopProjs) {{
-        const tasks = byProject[proj];
-        const collapsedCls = isAllDaysCollapsed ? ' collapsed' : '';
+      for (const cat of allCats) {{
+        const catTitle = cat === 'work' ? '💼 Work' : cat === 'personal' ? '👤 Personal' : cat === 'others' ? '📦 Others / Unassigned' : cat.toUpperCase();
+        const parentMap = byCategory[cat];
+        let catTaskCount = 0;
+        Object.values(parentMap).forEach(list => {{ catTaskCount += list.length; }});
 
         html += `
-          <div class="day-group${{collapsedCls}}">
-            <div class="day-header" onclick="toggleDayAccordion(this)">
-              <div class="day-title">
-                <span class="top-project-icon" style="margin-right: 4px;">${{ICONS.layers}}</span>
-                <span style="font-weight: 700;">${{escapeHtml(proj)}}</span>
-                <span class="day-count-badge">${{tasks.length}} task${{tasks.length === 1 ? '' : 's'}}</span>
-              </div>
-              <span class="day-toggle-icon">▼</span>
+          <div class="category-block" style="margin-bottom: 20px;">
+            <div class="category-block-header" style="display: flex; align-items: center; justify-content: space-between; padding: 6px 4px; margin-bottom: 8px; border-bottom: 2px solid var(--border);">
+              <span style="font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: 0.3px;">${{escapeHtml(catTitle)}}</span>
+              <span class="badge" style="background-color: var(--bg-card-subtle); color: var(--text-dim); font-size: 11px;">${{catTaskCount}} task${{catTaskCount === 1 ? '' : 's'}}</span>
             </div>
-            <div class="day-content" style="padding: 10px 14px;">
-              ${{renderSubprojectHierarchy(tasks)}}
-            </div>
-          </div>
         `;
+
+        const sortedParents = Object.keys(parentMap).sort((a, b) => {{
+          const diff = parentMap[b].length - parentMap[a].length;
+          if (diff !== 0) return diff;
+          return a.localeCompare(b);
+        }});
+
+        for (const proj of sortedParents) {{
+          const tasks = parentMap[proj];
+          const collapsedCls = isAllDaysCollapsed ? ' collapsed' : '';
+
+          html += `
+            <div class="day-group${{collapsedCls}}">
+              <div class="day-header" onclick="toggleDayAccordion(this)">
+                <div class="day-title">
+                  <span class="top-project-icon" style="margin-right: 4px;">${{ICONS.layers}}</span>
+                  <span style="font-weight: 700;">${{escapeHtml(proj)}}</span>
+                  <span class="day-count-badge">${{tasks.length}} task${{tasks.length === 1 ? '' : 's'}}</span>
+                </div>
+                <span class="day-toggle-icon">▼</span>
+              </div>
+              <div class="day-content" style="padding: 10px 14px;">
+                ${{renderSubprojectHierarchy(tasks, true)}}
+              </div>
+            </div>
+          `;
+        }}
+
+        html += '</div>';
       }}
       container.innerHTML = html;
       updateDayToggleButton();
