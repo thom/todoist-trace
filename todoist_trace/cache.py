@@ -11,7 +11,7 @@ from datetime import datetime, time, timedelta, timezone, tzinfo
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from .config import DEFAULT_CACHE_PATH, DEFAULT_JSON_CACHE_PATH, resolve_timezone
+from .config import DEFAULT_CACHE_PATH, DEFAULT_JSON_CACHE_PATH, normalize_categories, resolve_timezone
 from .hierarchy import HierarchyStore
 
 
@@ -158,8 +158,14 @@ def calculate_missing_intervals(
 class TraceCache:
     """Manages persistent caching of projects, tasks, and activity events in JSON format."""
 
-    def __init__(self, cache_file: Optional[str] = None, enabled: bool = True):
+    def __init__(
+        self,
+        cache_file: Optional[str] = None,
+        enabled: bool = True,
+        categories_config: Optional[Dict[str, Any]] = None,
+    ):
         self.enabled = enabled
+        self.categories_config = categories_config
         raw_path = cache_file or str(DEFAULT_JSON_CACHE_PATH)
         self.path = Path(raw_path).expanduser()
         self.hierarchy_store: Optional[HierarchyStore] = (
@@ -355,9 +361,17 @@ class TraceCache:
         end_date: Optional[str] = None,
         priority: Optional[str] = None,
         due_status: Optional[str] = None,
+        categories_config: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         from .filters import filter_records
-        res = filter_records(self.resolved_activities, category=category, start_date=start_date, end_date=end_date)
+        cfg = categories_config if categories_config is not None else self.categories_config
+        res = filter_records(
+            self.resolved_activities,
+            category=category,
+            start_date=start_date,
+            end_date=end_date,
+            categories_config=cfg,
+        )
         if priority:
             res = [r for r in res if r.get("priority") == priority]
         if due_status:
@@ -444,8 +458,14 @@ class LabelCacheDict(dict):
 class SQLiteTraceCache:
     """SQLite-backed persistent cache with range-aware synchronization."""
 
-    def __init__(self, cache_file: Optional[str] = None, enabled: bool = True):
+    def __init__(
+        self,
+        cache_file: Optional[str] = None,
+        enabled: bool = True,
+        categories_config: Optional[Dict[str, Any]] = None,
+    ):
         self.enabled = enabled
+        self.categories_config = categories_config
         raw_path = cache_file or str(DEFAULT_CACHE_PATH)
         self.path = Path(raw_path).expanduser()
         self.hierarchy_store: Optional[HierarchyStore] = (
@@ -1009,6 +1029,7 @@ class SQLiteTraceCache:
         end_date: Optional[str] = None,
         priority: Optional[str] = None,
         due_status: Optional[str] = None,
+        categories_config: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         if not self.enabled or not self.conn:
             return []
@@ -1019,12 +1040,37 @@ class SQLiteTraceCache:
         params: List[Any] = []
 
         cat_lower = (category or "all").lower()
-        if cat_lower == "work":
-            where_clauses.append("(LOWER(top_level_project) LIKE 'work%' OR LOWER(top_level_project) LIKE 'work-areas%')")
-        elif cat_lower == "personal":
-            where_clauses.append("(LOWER(top_level_project) LIKE 'personal%' OR LOWER(top_level_project) LIKE 'personal-areas%')")
-        elif cat_lower in ("archives", "archived"):
-            where_clauses.append("LOWER(top_level_project) IN ('archives', 'archived')")
+        if cat_lower != "all":
+            cfg = normalize_categories(categories_config if categories_config is not None else self.categories_config)
+
+            def _build_cat_sql(patterns: List[str]) -> Tuple[str, List[str]]:
+                clauses = []
+                p_params: List[str] = []
+                for p in patterns:
+                    p_clean = p.strip().lower()
+                    if p_clean.endswith("*"):
+                        clauses.append("LOWER(top_level_project) LIKE ?")
+                        p_params.append(f"{p_clean[:-1]}%")
+                    else:
+                        clauses.append("(LOWER(top_level_project) = ? OR LOWER(top_level_project) LIKE ? OR LOWER(top_level_project) LIKE ? OR LOWER(top_level_project) LIKE ? OR LOWER(top_level_project) LIKE ?)")
+                        p_params.extend([p_clean, f"{p_clean}-%", f"{p_clean}_%", f"{p_clean} %", f"{p_clean}/%"])
+                if not clauses:
+                    return ("(1=0)", [])
+                return ("(" + " OR ".join(clauses) + ")", p_params)
+
+            if cat_lower in ("others", "other", "archives", "archived"):
+                work_sql, work_params = _build_cat_sql(cfg.get("work", []))
+                pers_sql, pers_params = _build_cat_sql(cfg.get("personal", []))
+                where_clauses.append(f"(((NOT {work_sql}) AND (NOT {pers_sql})) OR LOWER(top_level_project) IN ('archives', 'archived'))")
+                params.extend(work_params)
+                params.extend(pers_params)
+            elif cat_lower in cfg:
+                cat_sql, cat_params = _build_cat_sql(cfg[cat_lower])
+                where_clauses.append(cat_sql)
+                params.extend(cat_params)
+            else:
+                where_clauses.append("LOWER(top_level_project) = ?")
+                params.append(cat_lower)
 
         if start_date:
             where_clauses.append("date >= ?")
@@ -1108,7 +1154,7 @@ class SQLiteTraceCache:
             self.conn = None
 
 
-def create_cache(cache_file: Optional[str] = None, enabled: bool = True):
+def create_cache(cache_file: Optional[str] = None, enabled: bool = True, categories_config: Optional[Dict[str, Any]] = None):
     """
     Factory creating either SQLiteTraceCache (default, .db/.sqlite)
     or TraceCache (.json) based on file extension.
@@ -1116,6 +1162,6 @@ def create_cache(cache_file: Optional[str] = None, enabled: bool = True):
     raw_path = cache_file or str(DEFAULT_CACHE_PATH)
     path = Path(raw_path).expanduser()
     if path.suffix == ".json":
-        return TraceCache(cache_file=str(path), enabled=enabled)
+        return TraceCache(cache_file=str(path), enabled=enabled, categories_config=categories_config)
     else:
-        return SQLiteTraceCache(cache_file=str(path), enabled=enabled)
+        return SQLiteTraceCache(cache_file=str(path), enabled=enabled, categories_config=categories_config)

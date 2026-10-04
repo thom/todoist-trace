@@ -749,6 +749,18 @@ class TestMaterializedResolvedActivities:
         assert len(personal_only) == 2
         assert {r["event_id"] for r in personal_only} == {"e3", "e4"}
 
+        others_only = cache.get_resolved_activities(category="others")
+        assert len(others_only) == 1
+        assert others_only[0]["event_id"] == "e5"
+
+        # Custom categories config pushdown
+        custom_work = cache.get_resolved_activities(
+            category="work",
+            categories_config={"work": ["archive*"], "personal": ["personal*"]},
+        )
+        assert len(custom_work) == 1
+        assert custom_work[0]["event_id"] == "e5"
+
         all_cats = cache.get_resolved_activities(category="all")
         assert len(all_cats) == 5
         cache.close()

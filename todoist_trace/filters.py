@@ -1,9 +1,10 @@
 """
 Filtering logic for todoist-trace records.
-Supports filtering by category (work, personal, all) and date ranges.
+Supports filtering by category (work, personal, others, all) and date ranges.
 """
 
 from typing import Any, Dict, List, Optional
+from .config import get_project_category
 
 
 def filter_records(
@@ -11,12 +12,14 @@ def filter_records(
     category: str = "all",
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    categories_config: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Filter records by category and date range.
-    - category: 'work' (matches 'work' or 'work-areas'), 'personal' (matches 'personal' or 'personal-areas'), or 'all'
+    - category: 'work', 'personal', 'others' (or 'archives'/'archived'), or 'all'
     - start_date: 'YYYY-MM-DD' (inclusive)
     - end_date: 'YYYY-MM-DD' (inclusive)
+    - categories_config: optional dict mapping category names to project patterns
     """
     if start_date and end_date and start_date > end_date:
         return []
@@ -25,18 +28,18 @@ def filter_records(
     cat_lower = (category or "all").lower()
 
     for r in records:
-        top_lower = r.get("top_level_project", "").lower()
+        top_proj = r.get("top_level_project", "")
+        rec_cat = get_project_category(top_proj, categories_config)
 
         # Category check
-        if cat_lower == "work":
-            if not (top_lower.startswith("work") or top_lower.startswith("work-areas")):
-                continue
-        elif cat_lower == "personal":
-            if not (top_lower.startswith("personal") or top_lower.startswith("personal-areas")):
-                continue
-        elif cat_lower in ("archives", "archived"):
-            if top_lower not in ("archives", "archived"):
-                continue
+        if cat_lower != "all":
+            if cat_lower in ("others", "other", "archives", "archived"):
+                if rec_cat != "others" and top_proj.lower() not in ("archives", "archived"):
+                    continue
+            else:
+                r_direct = (r.get("category") or "").lower()
+                if rec_cat != cat_lower and r_direct != cat_lower:
+                    continue
 
         # Date range check
         rec_date = r.get("date", "")

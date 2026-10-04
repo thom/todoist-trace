@@ -287,6 +287,7 @@ def run_export(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
         category=settings.get("category", "all"),
         start_date=settings.get("start_date"),
         end_date=settings.get("end_date"),
+        categories_config=settings.get("categories"),
     )
     total_count = cache.get_resolved_activities_count()
 
@@ -315,6 +316,7 @@ def run_export(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
             include_descriptions=inc_desc,
             include_priorities=inc_prio,
             include_due_dates=inc_due,
+            categories_config=settings.get("categories"),
         )
     else:
         export_markdown(
@@ -580,6 +582,7 @@ def main(argv: Optional[list] = None) -> int:
     cache = create_cache(
         cache_file=settings.get("cache_file"),
         enabled=settings.get("cache_enabled", True),
+        categories_config=settings.get("categories"),
     )
 
     if command == "status":

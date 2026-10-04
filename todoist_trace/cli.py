@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .config import DEFAULT_CACHE_PATH, load_config, resolve_timezone
+from .config import DEFAULT_CACHE_PATH, load_config, normalize_categories, resolve_timezone
 
 
 def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
@@ -93,9 +93,9 @@ def _add_export_only_arguments(parser: argparse.ArgumentParser) -> None:
     """Add options specific to formatting and filtering exports."""
     parser.add_argument(
         "-c", "--category",
-        choices=["work", "personal", "archives", "archived", "all"],
+        choices=["work", "personal", "others", "other", "archives", "archived", "all"],
         default=None,
-        help="Top-level project filter: work, personal, archives, or all (default: all)",
+        help="Top-level project filter: work, personal, others, or all (default: all)",
     )
     parser.add_argument(
         "-f", "--format",
@@ -272,6 +272,7 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
 
     # 3. Category
     category = (getattr(args, "category", None) or os.environ.get("TODOIST_TRACE_CATEGORY") or file_cfg.get("category") or "all").lower()
+    categories = normalize_categories(file_cfg.get("categories"))
 
     # 4. Dates
     start_date = getattr(args, "start_date", None) or os.environ.get("TODOIST_TRACE_START_DATE") or file_cfg.get("start_date")
@@ -353,6 +354,7 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         "token": token,
         "format": output_format,
         "category": category,
+        "categories": categories,
         "start_date": start_date,
         "end_date": end_date,
         "output": output,

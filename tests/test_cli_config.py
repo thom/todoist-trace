@@ -360,3 +360,34 @@ class TestSubcommandsAndStages:
         assert "Build Dashboard" in text
         assert "timeline-chart" in text
 
+    def test_cli_category_others(self):
+        args_others = parse_args(["-c", "others"])
+        settings_others = resolve_settings(args_others)
+        assert settings_others["category"] == "others"
+
+        args_other = parse_args(["-c", "other"])
+        settings_other = resolve_settings(args_other)
+        assert settings_other["category"] == "other"
+
+    def test_load_config_with_custom_categories(self, tmp_path):
+        import json
+        config_file = tmp_path / "custom_config.json"
+        config_file.write_text(
+            json.dumps({
+                "format": "html",
+                "categories": {
+                    "work": ["alpha-project", "client-*"],
+                    "personal": ["hobby", "wellness"],
+                },
+            }),
+            encoding="utf-8",
+        )
+        args = parse_args(["--config", str(config_file)])
+        settings = resolve_settings(args)
+
+        assert "categories" in settings
+        assert "alpha-project" in settings["categories"]["work"]
+        assert "client-*" in settings["categories"]["work"]
+        assert "hobby" in settings["categories"]["personal"]
+
+

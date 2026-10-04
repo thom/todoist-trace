@@ -114,6 +114,10 @@ Create `~/.todoist-trace/config.json` to store your API token and preferred defa
   "format": "markdown",
   "category": "all",
   "timezone": "Europe/Zurich",
+  "categories": {
+    "work": ["work", "work-areas"],
+    "personal": ["personal", "personal-areas"]
+  },
   "include_labels": true,
   "include_descriptions": true,
   "include_priorities": true,
@@ -273,7 +277,7 @@ python3 todoist_trace.py -s 2026-09-01 -f markdown -o monthly.md
 | :--- | :--- | :--- | :--- |
 | `--format` | `-f` | `csv` | Output format: `csv`, `markdown` / `md`, or `html`. |
 | `--output` | `-o` | Auto | Output file path (default: `todoist_trace_export.csv`, `.md`, or `.html`). |
-| `--category` | `-c` | `all` | Top-level project filter: `work`, `personal`, or `all`. |
+| `--category` | `-c` | `all` | Top-level project filter: `work`, `personal`, `others`, or `all`. |
 | `--labels` / `--include-labels` | | `False` | Include task labels in exports. |
 | `--descriptions` / `--include-descriptions` | | `False` | Include task descriptions/notes in exports. |
 | `--priorities` / `--include-priorities` | | `False` | Include task priorities (`p1`-`p4`) in exports. |

@@ -43,6 +43,62 @@ DEFAULT_CACHE_PATH = DEFAULT_APP_DIR / "cache.db"
 DEFAULT_JSON_CACHE_PATH = DEFAULT_APP_DIR / "cache.json"
 DEFAULT_HIERARCHY_PATH = DEFAULT_APP_DIR / "hierarchy.json"
 
+DEFAULT_CATEGORIES: Dict[str, List[str]] = {
+    "work": ["work", "work-areas"],
+    "personal": ["personal", "personal-areas"],
+}
+
+
+def normalize_categories(categories: Optional[Dict[str, Any]] = None) -> Dict[str, List[str]]:
+    """Normalize categories configuration into a dict mapping category name to list of lowercase project patterns."""
+    if not categories or not isinstance(categories, dict):
+        return {k: [p.lower() for p in v] for k, v in DEFAULT_CATEGORIES.items()}
+    norm: Dict[str, List[str]] = {}
+    for cat, projs in categories.items():
+        if isinstance(projs, list):
+            norm[str(cat).lower()] = [str(p).strip().lower() for p in projs if p]
+        elif isinstance(projs, str):
+            norm[str(cat).lower()] = [p.strip().lower() for p in projs.split(",") if p.strip()]
+    if "work" not in norm:
+        norm["work"] = [p.lower() for p in DEFAULT_CATEGORIES["work"]]
+    if "personal" not in norm:
+        norm["personal"] = [p.lower() for p in DEFAULT_CATEGORIES["personal"]]
+    return norm
+
+
+def get_project_category(
+    top_level_project: Optional[str],
+    categories_config: Optional[Dict[str, Any]] = None,
+) -> str:
+    """
+    Resolve the category for a given top-level project name.
+    Returns the category name (e.g. 'work', 'personal') or 'others' if unassigned.
+    """
+    tp = (top_level_project or "").strip().lower()
+    if not tp or tp in ("archives", "archived"):
+        return "others"
+
+    cfg = normalize_categories(categories_config)
+
+    for cat_name, patterns in cfg.items():
+        for p in patterns:
+            p_clean = p.strip().lower()
+            if p_clean.endswith("*"):
+                prefix = p_clean[:-1]
+                if tp.startswith(prefix):
+                    return cat_name
+            else:
+                if (
+                    tp == p_clean
+                    or tp.startswith(p_clean + "-")
+                    or tp.startswith(p_clean + "_")
+                    or tp.startswith(p_clean + " ")
+                    or tp.startswith(p_clean + "/")
+                ):
+                    return cat_name
+
+    return "others"
+
 
 def load_env_file(path: Path) -> Dict[str, str]:
     """Parse a simple .env file into a key-value dictionary."""
@@ -114,5 +170,8 @@ def load_config(custom_path: Optional[str] = None) -> Dict[str, Any]:
             except Exception as e:
                 sys.stderr.write(f"Warning: Failed to load config from {path}: {e}\n")
                 continue
+
+    if "categories" in config and isinstance(config["categories"], dict):
+        config["categories"] = normalize_categories(config["categories"])
 
     return config

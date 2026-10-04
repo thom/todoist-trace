@@ -833,15 +833,47 @@ if (cardP4.includes("badge-p4") || cardP4.includes("P4")) {
         assert 'id="category-filter"' in html_out
         assert 'id="parent-project-filter"' in html_out
         assert 'id="project-filter"' in html_out
+        assert 'value="others"' in html_out
+        assert "Others (Unassigned)" in html_out
 
-        # JavaScript functions
+        # JavaScript functions and config
         assert "updateProjectDropdowns" in html_out
         assert "onCategoryChange" in html_out
         assert "onParentProjectChange" in html_out
         assert "getRecordProject" in html_out
+        assert "getRecordCategory" in html_out
+        assert "CATEGORY_MAP" in html_out
 
         # Table header
         assert "Parent Project ⬍" in html_out
+
+    def test_generate_html_configurable_categories(self):
+        from todoist_trace.exporters import generate_html
+
+        records = [
+            {
+                "top_level_project": "custom-work",
+                "date": "2026-10-01",
+                "task_path": "Custom Work Task",
+            },
+            {
+                "top_level_project": "unassigned-archive",
+                "date": "2026-10-01",
+                "task_path": "Archive Task",
+            },
+        ]
+        custom_cfg = {
+            "work": ["custom-work*"],
+            "personal": ["my-personal*"],
+            "consulting": ["client-*"],
+        }
+        html_out = generate_html(records, categories_config=custom_cfg)
+
+        assert '<option value="consulting">Consulting</option>' in html_out
+        assert '<option value="others">Others (Unassigned)</option>' in html_out
+        assert '"custom-work*"' in html_out
+        assert "getRecordCategory" in html_out
+
 
 
 

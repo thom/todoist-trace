@@ -14,6 +14,8 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .config import normalize_categories
+
 
 def generate_html(
     records: List[Dict[str, Any]],
@@ -22,10 +24,27 @@ def generate_html(
     include_priorities: bool = True,
     include_due_dates: bool = True,
     title: str = "Todoist Trace - Activity Dashboard",
+    categories_config: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Generate a self-contained, interactive HTML dashboard."""
     # Sanitize JSON payload for embedding inside <script>
     json_data = json.dumps(records).replace("</", "<\\/")
+
+    # Normalize category configuration and serialize for JS
+    norm_categories = normalize_categories(categories_config)
+    categories_json = json.dumps(norm_categories)
+
+    # Build dynamic category select options
+    category_options = [
+        '<option value="all">All Categories</option>',
+        '<option value="work">Work</option>',
+        '<option value="personal">Personal</option>',
+    ]
+    for cat_key in norm_categories:
+        if cat_key not in ("work", "personal"):
+            category_options.append(f'<option value="{html.escape(cat_key)}">{html.escape(cat_key.capitalize())}</option>')
+    category_options.append('<option value="others">Others (Unassigned)</option>')
+    category_options_html = "\n          ".join(category_options)
 
     # Pre-calculate initial summary stats for SSR fallback
     total_records = len(records)
@@ -1144,10 +1163,7 @@ def generate_html(
           <input type="text" id="search-box" class="search-input" placeholder="Search tasks, descriptions, projects, or @tags..." oninput="onSearchChange()">
         </div>
         <select id="category-filter" class="filter-select" onchange="onCategoryChange()">
-          <option value="all">All Categories</option>
-          <option value="work">Work</option>
-          <option value="personal">Personal</option>
-          <option value="archives">Archives</option>
+          {category_options_html}
         </select>
         <select id="parent-project-filter" class="filter-select" onchange="onParentProjectChange()">
           <option value="all">All Parent Projects</option>
@@ -1449,6 +1465,39 @@ def generate_html(
       return r.top_level_project || 'Uncategorized';
     }}
 
+    const CATEGORY_MAP = {categories_json};
+
+    // Helper to determine category for a record
+    function getRecordCategory(r) {{
+      if (r.category) {{
+        const c = (r.category || '').toLowerCase().trim();
+        if (c && c !== 'all') return c;
+      }}
+      const tp = (r.top_level_project || '').toLowerCase().trim();
+      if (!tp || tp === 'archives' || tp === 'archived') return 'others';
+
+      for (const [catName, patterns] of Object.entries(CATEGORY_MAP)) {{
+        for (const p of patterns) {{
+          const pClean = p.toLowerCase().trim();
+          if (pClean.endsWith('*')) {{
+            const prefix = pClean.slice(0, -1);
+            if (tp.startsWith(prefix)) return catName.toLowerCase();
+          }} else {{
+            if (
+              tp === pClean ||
+              tp.startsWith(pClean + '-') ||
+              tp.startsWith(pClean + '_') ||
+              tp.startsWith(pClean + ' ') ||
+              tp.startsWith(pClean + '/')
+            ) {{
+              return catName.toLowerCase();
+            }}
+          }}
+        }}
+      }}
+      return 'others';
+    }}
+
     // Cascading Filter Dropdowns Initialization & Synchronization
     function updateProjectDropdowns() {{
       const cat = document.getElementById('category-filter') ? document.getElementById('category-filter').value : 'all';
@@ -1462,12 +1511,11 @@ def generate_html(
       // 1. Records matching current category
       const catRecords = rawRecords.filter(r => {{
         if (cat === 'all') return true;
-        const tp = (r.top_level_project || '').toLowerCase();
-        const recCat = (r.category || '').toLowerCase();
-        if (cat === 'work') return tp.startsWith('work') || recCat === 'work';
-        if (cat === 'personal') return tp.startsWith('personal') || recCat === 'personal';
-        if (cat === 'archives' || cat === 'archived') return tp === 'archives' || tp === 'archived' || recCat === 'archives' || recCat === 'archived';
-        return tp === cat || recCat === cat;
+        const recCat = getRecordCategory(r);
+        if (cat === 'others' || cat === 'archives' || cat === 'archived') {{
+          return recCat === 'others';
+        }}
+        return recCat === cat.toLowerCase();
       }});
 
       // 2. Unique parent projects for this category
@@ -1532,16 +1580,11 @@ def generate_html(
       filteredRecords = rawRecords.filter(r => {{
         // Category check
         if (cat !== 'all') {{
-          const tp = (r.top_level_project || '').toLowerCase();
-          const recCat = (r.category || '').toLowerCase();
-          if (cat === 'work') {{
-            if (!tp.startsWith('work') && recCat !== 'work') return false;
-          }} else if (cat === 'personal') {{
-            if (!tp.startsWith('personal') && recCat !== 'personal') return false;
-          }} else if (cat === 'archives' || cat === 'archived') {{
-            if (tp !== 'archives' && tp !== 'archived' && recCat !== 'archives' && recCat !== 'archived') return false;
+          const recCat = getRecordCategory(r);
+          if (cat === 'others' || cat === 'archives' || cat === 'archived') {{
+            if (recCat !== 'others') return false;
           }} else {{
-            if (tp !== cat && recCat !== cat) return false;
+            if (recCat !== cat.toLowerCase()) return false;
           }}
         }}
 
@@ -2428,6 +2471,7 @@ def export_html(
     include_priorities: bool = True,
     include_due_dates: bool = True,
     title: str = "Todoist Trace - Activity Dashboard",
+    categories_config: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Generate and write interactive HTML dashboard to disk."""
     html_content = generate_html(
@@ -2437,6 +2481,7 @@ def export_html(
         include_priorities=include_priorities,
         include_due_dates=include_due_dates,
         title=title,
+        categories_config=categories_config,
     )
     dest = Path(output_path).expanduser()
     dest.parent.mkdir(parents=True, exist_ok=True)
