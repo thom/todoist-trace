@@ -191,8 +191,8 @@ class FancyProgressReporter:
         date_range_desc: str,
         timezone_desc: str,
         cache_desc: str,
-        category_desc: str = "all",
-        format_desc: str = "csv",
+        category_desc: Optional[str] = None,
+        format_desc: Optional[str] = None,
     ) -> None:
         """Render a sleek boxed metadata header."""
         if self.quiet:
@@ -216,8 +216,10 @@ class FancyProgressReporter:
         self.stream.write(f"\n{self.style.dim(top)}\n")
         self.stream.write(f"{row('Range', date_range_desc)}\n")
         self.stream.write(f"{row('Timezone', timezone_desc)}\n")
-        self.stream.write(f"{row('Category', category_desc)}\n")
-        self.stream.write(f"{row('Format', format_desc)}\n")
+        if category_desc:
+            self.stream.write(f"{row('Category', category_desc)}\n")
+        if format_desc:
+            self.stream.write(f"{row('Format', format_desc)}\n")
         self.stream.write(f"{row('Cache', cache_desc)}\n")
         self.stream.write(f"{self.style.dim(bottom)}\n\n")
         self.stream.flush()
@@ -286,7 +288,7 @@ class FancyProgressReporter:
         if fully_cached:
             final = (
                 f"{self.style.cyan('[2/4]')} {self.style.green(self.CHECKMARK)} "
-                f"Sync: Date range fully cached ({self.style.bold(str(total_cache_count))} events in SQLite). Zero API calls."
+                f"Sync: Date range fully cached ({self.style.bold(str(total_cache_count))} events cached). Zero API calls."
             )
             self.print_text(final)
             return
@@ -385,7 +387,7 @@ class FancyProgressReporter:
         final = (
             f"{self.style.cyan('[2/4]')} {self.style.green(self.CHECKMARK)} "
             f"Sync complete: {self.style.bold(f'{new_events_count:,}')} new activities synced "
-            f"({total_cache_count:,} total in SQLite) in {dur_str}{speed_str}"
+            f"({total_cache_count:,} total cached) in {dur_str}{speed_str}"
         )
         self._end_live_line(final)
 

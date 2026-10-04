@@ -45,7 +45,6 @@ def run_status(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
     if cache_path.is_file():
         file_size_str = _format_size(cache_path.stat().st_size)
 
-    cache_mode = "SQLite"
     last_sync = cache.get_last_sync() or "Never"
     events_count = cache.get_events_count()
     projects_count = len(cache.projects)
@@ -59,7 +58,7 @@ def run_status(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
 
     reporter.print_text(reporter.style.bold("\nTodoist Trace Cache Status"))
     reporter.print_text(reporter.style.dim("─" * 32))
-    reporter.print_text(f"  Location:     {cache_path} ({cache_mode})")
+    reporter.print_text(f"  Location:     {cache_path}")
     reporter.print_text(f"  File Size:    {file_size_str}")
     reporter.print_text(f"  Cache State:  {'Active' if cache.enabled else 'Disabled'}")
     reporter.print_text(f"  Last Sync:    {last_sync}")
@@ -602,23 +601,23 @@ def main(argv: Optional[list] = None) -> int:
         except Exception:
             pass
 
-    cache_mode = "SQLite"
-    cache_desc = f"{settings.get('cache_file')} ({cache_mode})" if settings.get("cache_enabled") else "Disabled"
+    cache_desc = str(settings.get("cache_file")) if settings.get("cache_enabled") else "Disabled"
 
+    fmt_desc = None
+    cat_desc = None
     if command in ("export", "run"):
+        cat_desc = settings.get("category", "all")
         if settings.get("format") == "markdown":
             fmt_desc = "MARKDOWN"
         elif settings.get("format") == "html":
             fmt_desc = "HTML (Interactive Dashboard)"
         else:
             fmt_desc = "CSV"
-    else:
-        fmt_desc = "SQLite Cache"
 
     reporter.print_banner(
         date_range_desc=date_range_desc,
         timezone_desc=str(settings.get("timezone", "local")),
-        category_desc=settings.get("category", "all") if command in ("export", "run") else "all",
+        category_desc=cat_desc,
         format_desc=fmt_desc,
         cache_desc=cache_desc,
     )
