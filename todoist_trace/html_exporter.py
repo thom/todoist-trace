@@ -1035,7 +1035,7 @@ def generate_html(
 
     /* Tooltip */
     .chart-tooltip {{
-      position: absolute;
+      position: fixed;
       background-color: var(--bg-card);
       border: 1px solid var(--border);
       border-radius: 6px;
@@ -1045,7 +1045,10 @@ def generate_html(
       pointer-events: none;
       opacity: 0;
       transition: opacity 0.15s ease;
-      z-index: 100;
+      z-index: 1000;
+      transform: translate(-50%, -100%);
+      margin-top: -10px;
+      white-space: nowrap;
     }}
 
     /* Empty state */
@@ -2106,6 +2109,7 @@ def generate_html(
                 opacity="${{isSelected ? '1' : '0.85'}}"
                 style="cursor: pointer; transition: opacity 0.15s ease;"
                 onmouseover="showChartTooltip(event, '${{d}}', ${{count}})"
+                onmousemove="moveChartTooltip(event)"
                 onmouseout="hideChartTooltip()"
                 onclick="filterByDay('${{d}}')" />
         `;
@@ -2117,10 +2121,17 @@ def generate_html(
     function showChartTooltip(evt, date, count) {{
       const tooltip = document.getElementById('chart-tooltip');
       if (!tooltip) return;
-      tooltip.innerHTML = `<strong>${{date}}</strong>: ${{count}} tasks`;
-      tooltip.style.left = `${{evt.pageX + 10}}px`;
-      tooltip.style.top = `${{evt.pageY - 25}}px`;
+      tooltip.innerHTML = `<strong>${{date}}</strong>: ${{count}} task${{count === 1 ? '' : 's'}}`;
+      tooltip.style.left = `${{evt.clientX}}px`;
+      tooltip.style.top = `${{evt.clientY}}px`;
       tooltip.style.opacity = '1';
+    }}
+
+    function moveChartTooltip(evt) {{
+      const tooltip = document.getElementById('chart-tooltip');
+      if (!tooltip) return;
+      tooltip.style.left = `${{evt.clientX}}px`;
+      tooltip.style.top = `${{evt.clientY}}px`;
     }}
 
     function hideChartTooltip() {{
