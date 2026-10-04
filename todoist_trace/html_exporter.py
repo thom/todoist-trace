@@ -670,9 +670,29 @@ def generate_html(
     }}
 
     .date-range-menu {{
-      min-width: 250px;
-      padding: 12px;
+      width: 530px;
+      max-width: 530px;
+      padding: 12px 14px;
       gap: 10px;
+      left: 0;
+      right: auto;
+    }}
+
+    @media (max-width: 600px) {{
+      .date-range-menu {{
+        width: calc(100vw - 32px);
+        min-width: 280px;
+        max-width: 530px;
+      }}
+    }}
+
+    .date-range-header {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
     }}
 
     .date-range-title {{
@@ -681,40 +701,199 @@ def generate_html(
       text-transform: uppercase;
       letter-spacing: 0.5px;
       color: var(--text-dim);
-      margin-bottom: 2px;
     }}
 
-    .date-input-field {{
+    .date-range-selected-preview {{
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }}
+
+    .cal-nav-bar {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 2px 0;
+    }}
+
+    .cal-nav-btn {{
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background-color: var(--bg-card-subtle);
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      line-height: 1;
+    }}
+
+    .cal-nav-btn:hover {{
+      background-color: var(--bg-hover);
+      border-color: var(--text-dim);
+    }}
+
+    .cal-dual-container {{
+      display: flex;
+      gap: 16px;
+      justify-content: space-between;
+    }}
+
+    @media (max-width: 600px) {{
+      .cal-dual-container {{
+        flex-direction: column;
+        gap: 12px;
+      }}
+    }}
+
+    .cal-pane {{
+      flex: 1 1 230px;
+      min-width: 220px;
       display: flex;
       flex-direction: column;
       gap: 4px;
     }}
 
-    .date-input-field label {{
+    .cal-pane-title {{
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      color: var(--text);
+      padding: 2px 0 4px 0;
+    }}
+
+    .cal-weekdays {{
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      text-align: center;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-dim);
+      padding-bottom: 2px;
+    }}
+
+    .cal-grid {{
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      row-gap: 2px;
+      column-gap: 0;
+    }}
+
+    .cal-day-cell {{
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      cursor: pointer;
+      user-select: none;
+      color: var(--text);
+      border-radius: 0;
+      transition: background-color 0.1s ease;
+    }}
+
+    .cal-day-empty {{
+      height: 28px;
+      cursor: default;
+    }}
+
+    .cal-day-cell:hover:not(.cal-day-empty) {{
+      background-color: var(--bg-hover);
+      border-radius: 4px;
+    }}
+
+    .cal-day-cell.cal-start {{
+      background-color: var(--accent) !important;
+      color: #ffffff !important;
+      font-weight: 700;
+      border-top-left-radius: 6px;
+      border-bottom-left-radius: 6px;
+    }}
+
+    .cal-day-cell.cal-end {{
+      background-color: var(--accent) !important;
+      color: #ffffff !important;
+      font-weight: 700;
+      border-top-right-radius: 6px;
+      border-bottom-right-radius: 6px;
+    }}
+
+    .cal-day-cell.cal-single {{
+      border-radius: 6px !important;
+    }}
+
+    .cal-day-cell.cal-in-range {{
+      background-color: var(--accent-light);
+      color: var(--text);
+      border-radius: 0;
+    }}
+
+    .cal-day-cell.cal-preview {{
+      background-color: var(--accent-light);
+      opacity: 0.85;
+      border-radius: 0;
+    }}
+
+    .cal-day-cell.cal-today:not(.cal-start):not(.cal-end) {{
+      box-shadow: inset 0 0 0 1px var(--accent);
+      border-radius: 4px;
+    }}
+
+    .date-range-footer {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+    }}
+
+    .date-range-inputs {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }}
+
+    .date-input-inline {{
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }}
+
+    .date-input-inline label {{
       font-size: 11px;
       font-weight: 600;
       color: var(--text-muted);
     }}
 
+    .filter-date-input-sm,
     .filter-date-input {{
-      width: 100%;
-      padding: 6px 8px;
-      font-size: 12px;
+      padding: 4px 6px;
+      font-size: 11px;
       font-family: inherit;
       border: 1px solid var(--border);
-      border-radius: 6px;
+      border-radius: 4px;
       background-color: var(--bg-card);
       color: var(--text);
       outline: none;
       cursor: pointer;
       color-scheme: dark;
+      width: 120px;
     }}
 
+    :root[data-theme="light"] .filter-date-input-sm,
     :root[data-theme="light"] .filter-date-input {{
       color-scheme: light;
       background-color: #ffffff;
     }}
 
+    .filter-date-input-sm:focus,
     .filter-date-input:focus {{
       border-color: var(--accent);
     }}
@@ -724,9 +903,6 @@ def generate_html(
       align-items: center;
       justify-content: flex-end;
       gap: 8px;
-      margin-top: 4px;
-      padding-top: 8px;
-      border-top: 1px solid var(--border);
     }}
 
     .btn-toggle-days {{
@@ -1505,18 +1681,37 @@ def generate_html(
             <span class="multiselect-arrow">▾</span>
           </button>
           <div class="multiselect-menu date-range-menu">
-            <div class="date-range-title">Custom Date Range</div>
-            <div class="date-input-field">
-              <label for="date-from">Start Date (From)</label>
-              <input type="date" id="date-from" class="filter-date-input" onkeydown="if(event.key==='Enter') applyCustomDateRange()">
+            <div class="date-range-header">
+              <div class="date-range-title">Custom Date Range</div>
+              <div class="date-range-selected-preview" id="date-range-preview">Click start date, then end date</div>
             </div>
-            <div class="date-input-field">
-              <label for="date-to">End Date (To)</label>
-              <input type="date" id="date-to" class="filter-date-input" onkeydown="if(event.key==='Enter') applyCustomDateRange()">
+            <div class="cal-nav-bar">
+              <div style="display: flex; gap: 4px;">
+                <button type="button" class="cal-nav-btn" onclick="changeCalMonth(-12)" title="Previous Year">«</button>
+                <button type="button" class="cal-nav-btn" onclick="changeCalMonth(-1)" title="Previous Month">‹</button>
+              </div>
+              <span style="font-size: 11px; font-weight: 600; color: var(--text-dim);">Pick Start &amp; End Dates</span>
+              <div style="display: flex; gap: 4px;">
+                <button type="button" class="cal-nav-btn" onclick="changeCalMonth(1)" title="Next Month">›</button>
+                <button type="button" class="cal-nav-btn" onclick="changeCalMonth(12)" title="Next Year">»</button>
+              </div>
             </div>
-            <div class="date-range-actions">
-              <button type="button" class="btn btn-sm" id="btn-clear-date" onclick="clearDateRange()">Clear</button>
-              <button type="button" class="btn btn-sm btn-primary" onclick="applyCustomDateRange()">Apply</button>
+            <div class="cal-dual-container" id="cal-dual-container"></div>
+            <div class="date-range-footer">
+              <div class="date-range-inputs">
+                <div class="date-input-inline">
+                  <label for="date-from">From</label>
+                  <input type="date" id="date-from" class="filter-date-input-sm" onchange="onManualDateInputChange()" onkeydown="if(event.key==='Enter') applyCustomDateRange()">
+                </div>
+                <div class="date-input-inline">
+                  <label for="date-to">To</label>
+                  <input type="date" id="date-to" class="filter-date-input-sm" onchange="onManualDateInputChange()" onkeydown="if(event.key==='Enter') applyCustomDateRange()">
+                </div>
+              </div>
+              <div class="date-range-actions">
+                <button type="button" class="btn btn-sm" id="btn-clear-date" onclick="clearDateRange()">Clear</button>
+                <button type="button" class="btn btn-sm btn-primary" onclick="applyCustomDateRange()">Apply</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1707,12 +1902,238 @@ def generate_html(
       return now;
     }}
 
+    // Calendar Range Picker State & Helpers
+    let calViewYear = null;
+    let calViewMonth = null;
+    let calStart = null;
+    let calEnd = null;
+    let calHover = null;
+
+    const MONTH_NAMES = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const WEEKDAY_NAMES = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+
+    function padZero(n) {{
+      return String(n).padStart(2, '0');
+    }}
+
+    function initCalendarState() {{
+      const dateFrom = document.getElementById('date-from');
+      const dateTo = document.getElementById('date-to');
+      calStart = (dateFrom && dateFrom.value) ? dateFrom.value : null;
+      calEnd = (dateTo && dateTo.value) ? dateTo.value : null;
+      calHover = null;
+
+      if (calStart) {{
+        const parts = calStart.split('-');
+        calViewYear = parseInt(parts[0], 10);
+        calViewMonth = parseInt(parts[1], 10) - 1;
+      }} else {{
+        const ref = getReferenceDate();
+        calViewYear = ref.getFullYear();
+        calViewMonth = ref.getMonth() > 0 ? ref.getMonth() - 1 : 0;
+      }}
+    }}
+
+    function syncCalendarFromInputs() {{
+      const dateFrom = document.getElementById('date-from');
+      const dateTo = document.getElementById('date-to');
+      calStart = (dateFrom && dateFrom.value) ? dateFrom.value : null;
+      calEnd = (dateTo && dateTo.value) ? dateTo.value : null;
+      calHover = null;
+      if (calStart) {{
+        const parts = calStart.split('-');
+        calViewYear = parseInt(parts[0], 10);
+        calViewMonth = parseInt(parts[1], 10) - 1;
+      }}
+      renderCalendar();
+    }}
+
+    function changeCalMonth(delta) {{
+      if (calViewYear === null || calViewMonth === null) initCalendarState();
+      calViewMonth += delta;
+      while (calViewMonth < 0) {{
+        calViewMonth += 12;
+        calViewYear -= 1;
+      }}
+      while (calViewMonth > 11) {{
+        calViewMonth -= 12;
+        calViewYear += 1;
+      }}
+      renderCalendar();
+    }}
+
+    function renderCalendar() {{
+      const container = document.getElementById('cal-dual-container');
+      if (!container) return;
+      if (calViewYear === null || calViewMonth === null) initCalendarState();
+
+      const todayStr = formatDateIso(new Date());
+
+      const leftY = calViewYear;
+      const leftM = calViewMonth;
+
+      let rightY = leftY;
+      let rightM = leftM + 1;
+      if (rightM > 11) {{
+        rightM = 0;
+        rightY += 1;
+      }}
+
+      function buildPaneHtml(year, month) {{
+        const title = `${{MONTH_NAMES[month]}} ${{year}}`;
+        const firstDayObj = new Date(year, month, 1);
+        const dayOfWeek = firstDayObj.getDay();
+        const startBlank = (dayOfWeek === 0 ? 6 : dayOfWeek - 1);
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+        let cellsHtml = '';
+        for (let b = 0; b < startBlank; b++) {{
+          cellsHtml += '<div class="cal-day-empty"></div>';
+        }}
+
+        for (let d = 1; d <= daysInMonth; d++) {{
+          const dateStr = `${{year}}-${{padZero(month + 1)}}-${{padZero(d)}}`;
+          let classes = ['cal-day-cell'];
+
+          const isStart = (dateStr === calStart);
+          const isEnd = (dateStr === calEnd);
+          const isSingle = (isStart && isEnd);
+
+          if (isSingle) {{
+            classes.push('cal-start', 'cal-end', 'cal-single');
+          }} else if (isStart) {{
+            classes.push('cal-start');
+            if (!calEnd && !calHover) classes.push('cal-single');
+          }} else if (isEnd) {{
+            classes.push('cal-end');
+          }} else if (calStart && calEnd && dateStr > calStart && dateStr < calEnd) {{
+            classes.push('cal-in-range');
+          }} else if (calStart && !calEnd && calHover && dateStr > calStart && dateStr <= calHover) {{
+            classes.push('cal-preview');
+            if (dateStr === calHover) classes.push('cal-end');
+          }}
+
+          if (dateStr === todayStr) {{
+            classes.push('cal-today');
+          }}
+
+          cellsHtml += `<div class="${{classes.join(' ')}}" data-date="${{dateStr}}" onclick="onCalDayClick('${{dateStr}}')" onmouseenter="onCalDayHover('${{dateStr}}')" title="${{dateStr}}">${{d}}</div>`;
+        }}
+
+        const weekdaysHtml = WEEKDAY_NAMES.map(w => `<div>${{w}}</div>`).join('');
+
+        return `
+          <div class="cal-pane">
+            <div class="cal-pane-title">${{title}}</div>
+            <div class="cal-weekdays">${{weekdaysHtml}}</div>
+            <div class="cal-grid" onmouseleave="onCalMouseLeave()">${{cellsHtml}}</div>
+          </div>
+        `;
+      }}
+
+      container.innerHTML = buildPaneHtml(leftY, leftM) + buildPaneHtml(rightY, rightM);
+      updateCalPreviewText();
+    }}
+
+    function onCalDayClick(dateStr) {{
+      const dateFrom = document.getElementById('date-from');
+      const dateTo = document.getElementById('date-to');
+
+      if (!calStart || (calStart && calEnd)) {{
+        calStart = dateStr;
+        calEnd = null;
+        calHover = null;
+        if (dateFrom) dateFrom.value = calStart;
+        if (dateTo) dateTo.value = '';
+      }} else if (calStart && !calEnd) {{
+        if (dateStr < calStart) {{
+          calStart = dateStr;
+          calEnd = null;
+          calHover = null;
+          if (dateFrom) dateFrom.value = calStart;
+          if (dateTo) dateTo.value = '';
+        }} else {{
+          calEnd = dateStr;
+          calHover = null;
+          if (dateTo) dateTo.value = calEnd;
+        }}
+      }}
+      renderCalendar();
+    }}
+
+    function onCalDayHover(dateStr) {{
+      if (calStart && !calEnd) {{
+        if (dateStr >= calStart) {{
+          calHover = dateStr;
+          const cells = document.querySelectorAll('.cal-day-cell[data-date]');
+          cells.forEach(cell => {{
+            const d = cell.getAttribute('data-date');
+            if (d > calStart && d < dateStr) {{
+              cell.classList.add('cal-preview');
+              cell.classList.remove('cal-end');
+            }} else if (d === dateStr && d !== calStart) {{
+              cell.classList.add('cal-preview', 'cal-end');
+            }} else if (d !== calStart) {{
+              cell.classList.remove('cal-preview', 'cal-end');
+            }}
+          }});
+          updateCalPreviewText();
+        }} else {{
+          calHover = null;
+          const cells = document.querySelectorAll('.cal-day-cell[data-date]');
+          cells.forEach(cell => {{
+            if (cell.getAttribute('data-date') !== calStart) {{
+              cell.classList.remove('cal-preview', 'cal-end');
+            }}
+          }});
+          updateCalPreviewText();
+        }}
+      }}
+    }}
+
+    function onCalMouseLeave() {{
+      if (calStart && !calEnd) {{
+        calHover = null;
+        const cells = document.querySelectorAll('.cal-day-cell[data-date]');
+        cells.forEach(cell => {{
+          if (cell.getAttribute('data-date') !== calStart) {{
+            cell.classList.remove('cal-preview', 'cal-end');
+          }}
+        }});
+        updateCalPreviewText();
+      }}
+    }}
+
+    function updateCalPreviewText() {{
+      const preview = document.getElementById('date-range-preview');
+      if (!preview) return;
+
+      if (calStart && calEnd) {{
+        preview.textContent = `${{calStart}} → ${{calEnd}}`;
+      }} else if (calStart && calHover && calHover >= calStart) {{
+        preview.textContent = `${{calStart}} → ${{calHover}} (click to set)`;
+      }} else if (calStart) {{
+        preview.textContent = `Start: ${{calStart}} (click end date)`;
+      }} else {{
+        preview.textContent = 'Click start date, then end date';
+      }}
+    }}
+
+    function onManualDateInputChange() {{
+      syncCalendarFromInputs();
+    }}
+
     function initDatePickers() {{
       const bounds = getRecordDateRange();
       const dateFrom = document.getElementById('date-from');
       const dateTo = document.getElementById('date-to');
       if (dateFrom && bounds.min) dateFrom.min = bounds.min;
       if (dateTo && bounds.min) dateTo.min = bounds.min;
+      initCalendarState();
+      renderCalendar();
     }}
 
     function updatePresetPills(activePreset) {{
@@ -1791,6 +2212,7 @@ def generate_html(
       if (rangeLabel) rangeLabel.textContent = 'Custom Range';
       if (rangeBtn) rangeBtn.classList.remove('has-value');
 
+      syncCalendarFromInputs();
       updatePresetPills(preset);
       applyFilters();
     }}
@@ -1833,6 +2255,7 @@ def generate_html(
         if (rangeLabel) rangeLabel.textContent = 'Custom Range';
       }}
 
+      syncCalendarFromInputs();
       closeAllDropdowns();
       applyFilters();
     }}
@@ -1848,6 +2271,10 @@ def generate_html(
       const rangeBtn = document.getElementById('date-range-btn');
       if (dateFrom) dateFrom.value = '';
       if (dateTo) dateTo.value = '';
+      calStart = null;
+      calEnd = null;
+      calHover = null;
+      renderCalendar();
       if (rangeBtn) rangeBtn.classList.remove('has-value');
       if (rangeLabel) rangeLabel.textContent = 'Custom Range';
       activeDayFilter = null;
@@ -1903,6 +2330,9 @@ def generate_html(
         if (el) {{
           el.classList.add('open');
           openDropdownId = id;
+          if (id === 'date-range-dropdown') {{
+            syncCalendarFromInputs();
+          }}
           const menu = el.querySelector('.multiselect-menu');
           if (menu) {{
             const rect = menu.getBoundingClientRect();

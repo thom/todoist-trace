@@ -790,6 +790,15 @@ if (cardP4.includes("badge-p4") || cardP4.includes("P4")) {
         assert "onDateRangeChange" in html_out
         assert "initDatePickers" in html_out
 
+        # Unified interactive date range calendar picker
+        assert 'id="cal-dual-container"' in html_out
+        assert 'id="date-range-preview"' in html_out
+        assert "renderCalendar" in html_out
+        assert "onCalDayClick" in html_out
+        assert "onCalDayHover" in html_out
+        assert "changeCalMonth" in html_out
+        assert "syncCalendarFromInputs" in html_out
+
         # Calendar period presets
         assert 'data-preset="cur_week"' in html_out
         assert 'data-preset="prev_week"' in html_out
