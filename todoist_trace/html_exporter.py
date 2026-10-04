@@ -1495,6 +1495,8 @@ def generate_html(
           <span class="pill" data-preset="last_month" onclick="setDatePreset('last_month')">Last Month</span>
           <span class="pill" data-preset="cur_quarter" onclick="setDatePreset('cur_quarter')">Current Quarter</span>
           <span class="pill" data-preset="last_quarter" onclick="setDatePreset('last_quarter')">Last Quarter</span>
+          <span class="pill" data-preset="cur_year" onclick="setDatePreset('cur_year')">Current Year</span>
+          <span class="pill" data-preset="prev_year" onclick="setDatePreset('prev_year')">Previous Year</span>
         </div>
         <div class="multiselect date-range-dropdown" id="date-range-dropdown">
           <button type="button" class="date-range-btn" id="date-range-btn" onclick="toggleDropdown('date-range-dropdown')">
@@ -1772,6 +1774,16 @@ def generate_html(
         const qIndex = Math.floor(month / 3);
         const start = new Date(year, (qIndex - 1) * 3, 1);
         const end = new Date(year, qIndex * 3, 0);
+        dateFrom.value = formatDateIso(start);
+        dateTo.value = formatDateIso(end);
+      }} else if (preset === 'cur_year') {{
+        const start = new Date(year, 0, 1);
+        const end = new Date(year, 11, 31);
+        dateFrom.value = formatDateIso(start);
+        dateTo.value = formatDateIso(end);
+      }} else if (preset === 'prev_year') {{
+        const start = new Date(year - 1, 0, 1);
+        const end = new Date(year - 1, 11, 31);
         dateFrom.value = formatDateIso(start);
         dateTo.value = formatDateIso(end);
       }}

@@ -797,6 +797,8 @@ if (cardP4.includes("badge-p4") || cardP4.includes("P4")) {
         assert 'data-preset="last_month"' in html_out
         assert 'data-preset="cur_quarter"' in html_out
         assert 'data-preset="last_quarter"' in html_out
+        assert 'data-preset="cur_year"' in html_out
+        assert 'data-preset="prev_year"' in html_out
         assert 'data-preset="7d"' not in html_out
         assert 'data-preset="30d"' not in html_out
         assert 'data-preset="90d"' not in html_out
