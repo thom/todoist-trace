@@ -11,7 +11,6 @@ class TestModularPackageStructure:
             "DEFAULT_APP_DIR",
             "DEFAULT_CACHE_PATH",
             "DEFAULT_CONFIG_PATH",
-            "DEFAULT_JSON_CACHE_PATH",
             "ProjectTreeResolver",
             "SQLiteTraceCache",
             "SectionCacheDict",

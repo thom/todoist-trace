@@ -15,13 +15,12 @@ A robust, read-only Python CLI tool to export Todoist activity logs into structu
   - Live Unicode block progress bar (`[██████████░░░░░░░░]`), Braille animation spinner, calendar day completion percentage, throughput (`tasks/s`), and remaining time countdown (`ETA MM:SS`).
   - Automatically adapts to terminal width (`shutil.get_terminal_size()`) and collapses to clean milestone logs when piped or running in CI (`NO_COLOR` standard compliant).
 - **Hierarchical Markdown Export**:
-  - **Nested Headings**: Structured heading levels by project depth and section (`## Date` -> `### Root Project` -> `#### Sub-project` -> `##### Section`).
-  - **Flat Headings & Paths**: Optional flat representation with slash-separated headings (`#### admin/email`) and flat bullet paths.
+  - Structured heading levels by project depth and section (`## Date` -> `### Root Project` -> `#### Sub-project` -> `##### Section`).
 - **Interactive HTML Dashboard Export**:
   - Standalone, self-contained single-page dashboard with zero external dependencies (works 100% offline).
   - KPI metric cards (total tasks, active days, tasks/day velocity, on-time completion rate, top projects).
   - Interactive SVG charts (daily activity velocity timeline with clickable day filtering, project share breakdown).
-  - Multi-dimensional filters (search box, category, project, priority, due status, @tag filter).
+  - Multi-dimensional filters (search box, category, parent project, specific project, priority, due status, @tag filter).
   - Three distinct view modes: Collapsible Daily Timeline, Project Tree Hierarchy, and Sortable Data Table.
   - Built-in Dark and Light mode toggle with auto-detection and persistence.
 - **RFC 4180 Compliant CSV Export**: Clean, standard CSV output escaping commas, quotes, and newlines (`top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id`).
@@ -29,7 +28,6 @@ A robust, read-only Python CLI tool to export Todoist activity logs into structu
   - Automatically caches projects, sections, tasks, completed events, and synchronized date ranges in `~/.todoist-trace/cache.db`.
   - Coalesces contiguous intervals across runs, avoiding redundant API calls while tracking zero-activity days permanently.
   - B-tree indexing on `event_date` for sub-millisecond date range queries.
-  - Automatic migration from legacy `cache.json` without data loss.
 - **Strict Read-Only & Non-Destructive Policy**:
   - Exclusively issues HTTP `GET` requests (`https://developer.todoist.com/api/v1/`).
   - Never mutates, updates, creates, completes, or deletes any tasks, projects, or user data.
@@ -46,7 +44,7 @@ todoist-trace/
 │   ├── __init__.py             # Public package exports
 │   ├── __main__.py             # python -m todoist_trace entrypoint
 │   ├── api.py                  # Read-only Todoist REST API v1 client with progress hooks
-│   ├── cache.py                # Interval-aware SQLite and JSON cache engines
+│   ├── cache.py                # Interval-aware SQLite cache engine
 │   ├── cli.py                  # CLI argument parsing and precedence resolution
 │   ├── config.py               # Dotfile (~/.todoist-trace/) & .env loader, timezone resolver
 │   ├── exporters.py            # RFC 4180 CSV & hierarchical Markdown generators
@@ -54,10 +52,10 @@ todoist-trace/
 │   ├── main.py                 # Pipeline execution and orchestration
 │   ├── progress.py             # Visual terminal progress reporter, day tracking, ETA
 │   └── resolvers.py            # Recursive project tree, section, and task hierarchy resolvers
-├── tests/                      # Modular test suite (109 tests)
+├── tests/                      # Modular test suite (177 tests)
 │   ├── conftest.py             # Shared fixtures and path configuration
 │   ├── test_api.py             # Read-only REST API client and section endpoint tests
-│   ├── test_cache.py           # SQLite, interval arithmetic, and auto-migration tests
+│   ├── test_cache.py           # SQLite, interval arithmetic, and materialized cache tests
 │   ├── test_cli_config.py      # Argument and configuration precedence tests
 │   ├── test_exporters.py       # CSV and Markdown formatting tests
 │   ├── test_filters.py         # Category and date filtering tests

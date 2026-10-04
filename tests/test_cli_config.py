@@ -2,7 +2,7 @@
 Unit tests for CLI argument parsing and configuration resolution.
 """
 
-from todoist_trace.cache import TraceCache
+from todoist_trace.cache import SQLiteTraceCache, TraceCache
 from todoist_trace.cli import parse_args, resolve_settings
 
 
@@ -19,7 +19,6 @@ class TestCLIAndSettings:
             "-t", "test_token_123",
         ])
         settings = resolve_settings(args)
-
         assert settings["format"] == "markdown"
         assert settings["category"] == "work"
         assert settings["start_date"] == "2026-09-01"
@@ -39,10 +38,11 @@ class TestCLIAndSettings:
         assert ".todoist-trace/cache.db" in settings["cache_file"]
 
     def test_cache_save_creates_parent_directory(self, tmp_path):
-        nested_cache_file = tmp_path / "new_dir" / "sub" / "cache.json"
-        cache = TraceCache(cache_file=str(nested_cache_file), enabled=True)
+        nested_cache_file = tmp_path / "new_dir" / "sub" / "cache.db"
+        cache = SQLiteTraceCache(cache_file=str(nested_cache_file), enabled=True)
         cache.projects = [{"id": "p1"}]
         cache.save()
+        cache.close()
         assert nested_cache_file.is_file()
 
     def test_reversed_dates_raise_value_error(self):
@@ -364,10 +364,6 @@ class TestSubcommandsAndStages:
         args_others = parse_args(["-c", "others"])
         settings_others = resolve_settings(args_others)
         assert settings_others["category"] == "others"
-
-        args_other = parse_args(["-c", "other"])
-        settings_other = resolve_settings(args_other)
-        assert settings_other["category"] == "other"
 
     def test_load_config_with_custom_categories(self, tmp_path):
         import json

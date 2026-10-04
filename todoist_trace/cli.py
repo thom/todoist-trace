@@ -93,7 +93,7 @@ def _add_export_only_arguments(parser: argparse.ArgumentParser) -> None:
     """Add options specific to formatting and filtering exports."""
     parser.add_argument(
         "-c", "--category",
-        choices=["work", "personal", "others", "other", "archives", "archived", "all"],
+        choices=["work", "personal", "others", "all"],
         default=None,
         help="Top-level project filter: work, personal, others, or all (default: all)",
     )
@@ -297,8 +297,6 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
         cache_file = str(Path(raw_cache).expanduser())
     elif Path(".todoist_cache.db").is_file():
         cache_file = ".todoist_cache.db"
-    elif Path(".todoist_cache.json").is_file():
-        cache_file = ".todoist_cache.json"
     else:
         cache_file = str(DEFAULT_CACHE_PATH)
     refresh = getattr(args, "refresh", False)

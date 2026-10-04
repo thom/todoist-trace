@@ -40,7 +40,6 @@ def resolve_timezone(tz_name: Optional[Union[str, tzinfo]] = None) -> tzinfo:
 DEFAULT_APP_DIR = Path.home() / ".todoist-trace"
 DEFAULT_CONFIG_PATH = DEFAULT_APP_DIR / "config.json"
 DEFAULT_CACHE_PATH = DEFAULT_APP_DIR / "cache.db"
-DEFAULT_JSON_CACHE_PATH = DEFAULT_APP_DIR / "cache.json"
 DEFAULT_HIERARCHY_PATH = DEFAULT_APP_DIR / "hierarchy.json"
 
 DEFAULT_CATEGORIES: Dict[str, List[str]] = {

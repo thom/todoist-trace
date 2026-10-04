@@ -98,40 +98,6 @@ class TestIntervalArithmetic:
         assert missing[0][1] == "2026-09-20T00:00:00Z"
 
 
-class TestTraceCache:
-    """Test suite for JSON-backed TraceCache functionality."""
-
-    def test_cache_save_and_load(self, tmp_path):
-        cache_file = tmp_path / "test_cache.json"
-        cache = TraceCache(cache_file=str(cache_file), enabled=True)
-
-        cache.projects = [{"id": "p1", "name": "Work"}]
-        cache.tasks = {"t1": {"content": "Task 1", "parent_id": None}}
-        cache.merge_events([
-            {"id": "e1", "event_date": "2026-10-01T10:00:00Z", "extra_data": {"content": "E1"}},
-            {"id": "e2", "event_date": "2026-10-02T12:00:00Z", "extra_data": {"content": "E2"}},
-        ])
-        cache.record_sync_range("2026-10-01T00:00:00Z", "2026-10-02T23:59:59Z", is_genesis=False)
-        cache.save()
-
-        # Reload in a new instance
-        reloaded = TraceCache(cache_file=str(cache_file), enabled=True)
-        assert len(reloaded.projects) == 1
-        assert reloaded.projects[0]["name"] == "Work"
-        assert reloaded.tasks["t1"]["content"] == "Task 1"
-        assert len(reloaded.events) == 2
-        assert reloaded.get_latest_event_date() == "2026-10-02T12:00:00Z"
-        assert [e["id"] for e in reloaded.get_all_events()] == ["e2", "e1"]
-        assert len(reloaded.get_sync_ranges()) == 1
-
-    def test_disabled_cache(self, tmp_path):
-        cache_file = tmp_path / "disabled_cache.json"
-        cache = TraceCache(cache_file=str(cache_file), enabled=False)
-        cache.projects = [{"id": "p1"}]
-        cache.save()
-        assert not cache_file.exists()
-
-
 class TestSQLiteTraceCache:
     """Test suite for SQLiteTraceCache functionality and range-aware sync."""
 
@@ -245,56 +211,15 @@ class TestSQLiteTraceCache:
 
         cache.close()
 
-    def test_sqlite_backward_compatibility_init_sync_ranges(self, tmp_path):
-        """Ensure an existing database without sync_ranges table initializes bounds from events."""
-        db_file = tmp_path / "legacy_v1.db"
-        # Manually create legacy database without sync_ranges table
-        conn = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
-        conn.merge_events([
-            {"id": "ev_old", "event_date": "2026-08-01T12:00:00Z", "payload": json.dumps({"id": "ev_old"})},
-            {"id": "ev_new", "event_date": "2026-08-31T12:00:00Z", "payload": json.dumps({"id": "ev_new"})},
-        ])
-        conn.close()
-
-        # Reopen cache
-        reopened = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
-        ranges = reopened.get_sync_ranges()
-        assert len(ranges) == 1
-        assert ranges[0][0] == "2026-08-01T12:00:00Z"
-        assert ranges[0][1] == "2026-08-31T12:00:00Z"
-        reopened.close()
-
-    def test_sqlite_auto_migration(self, tmp_path, monkeypatch):
-        legacy_json = tmp_path / "legacy.json"
-        legacy_data = {
-            "projects": [{"id": "p_legacy", "name": "Legacy Project"}],
-            "tasks": {"t_legacy": {"content": "Legacy Task", "parent_id": None}},
-            "events": {
-                "e_legacy": {"id": "e_legacy", "event_date": "2026-09-01T10:00:00Z", "extra_data": {"content": "Legacy Task"}},
-            },
-        }
-        legacy_json.write_text(json.dumps(legacy_data), encoding="utf-8")
-
-        import todoist_trace
-        monkeypatch.setattr(todoist_trace, "DEFAULT_JSON_CACHE_PATH", legacy_json)
-
-        db_file = tmp_path / "migrated.db"
-        cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
-
-        assert len(cache.projects) == 1
-        assert cache.projects[0]["id"] == "p_legacy"
-        assert "t_legacy" in cache.tasks
-        assert cache.get_events_count() == 1
-        assert cache.get_latest_event_date() == "2026-09-01T10:00:00Z"
-        cache.close()
-
     def test_create_cache_factory(self, tmp_path):
         json_file = str(tmp_path / "cache.json")
         db_file = str(tmp_path / "cache.db")
         sqlite_file = str(tmp_path / "cache.sqlite")
 
         c_json = create_cache(json_file)
+        assert isinstance(c_json, SQLiteTraceCache)
         assert isinstance(c_json, TraceCache)
+        c_json.close()
 
         c_db = create_cache(db_file)
         assert isinstance(c_db, SQLiteTraceCache)
@@ -552,40 +477,6 @@ class TestCacheEdgeCases:
         assert reloaded.sections["sec_2"]["name"] == "Sprint 2"
         reloaded.close()
 
-    def test_trace_cache_json_sections(self, tmp_path):
-        json_file = tmp_path / "cache.json"
-        cache = TraceCache(cache_file=str(json_file), enabled=True)
-        cache.sections = {"sec_json": {"id": "sec_json", "name": "JSON Section"}}
-        cache.save()
-
-        reloaded = TraceCache(cache_file=str(json_file), enabled=True)
-        assert reloaded.sections["sec_json"]["name"] == "JSON Section"
-
-    def test_auto_migration_with_sections(self, tmp_path, monkeypatch):
-        json_file = tmp_path / "legacy_cache.json"
-        db_file = tmp_path / "migrated.db"
-
-        legacy_data = {
-            "projects": [{"id": "p1", "name": "Work"}],
-            "tasks": {"t1": {"content": "Task 1", "parent_id": None}},
-            "sections": {"s1": {"id": "s1", "project_id": "p1", "name": "Sprint Alpha"}},
-            "events": {
-                "e1": {"id": "e1", "event_date": "2026-09-01T12:00:00Z", "extra_data": {"content": "Task 1"}}
-            },
-        }
-        with open(json_file, "w", encoding="utf-8") as f:
-            json.dump(legacy_data, f)
-
-        import todoist_trace
-        monkeypatch.setattr(todoist_trace, "DEFAULT_JSON_CACHE_PATH", json_file)
-
-        cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
-        assert cache.sections["s1"]["name"] == "Sprint Alpha"
-        assert cache.tasks["t1"]["content"] == "Task 1"
-        assert len(cache.projects) == 1
-        assert cache.get_events_count() == 1
-        cache.close()
-
     def test_sqlite_labels_persistence(self, tmp_path):
         db_file = tmp_path / "labels_test.db"
         cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
@@ -614,39 +505,6 @@ class TestCacheEdgeCases:
         assert reloaded.labels["lbl_2"]["name"] == "urgent"
         assert reloaded.labels["lbl_3"]["name"] == "ops"
         reloaded.close()
-
-    def test_trace_cache_json_labels(self, tmp_path):
-        json_file = tmp_path / "cache_labels.json"
-        cache = TraceCache(cache_file=str(json_file), enabled=True)
-        cache.labels = {"lbl_json": {"id": "lbl_json", "name": "json_label", "color": "green"}}
-        cache.save()
-
-        reloaded = TraceCache(cache_file=str(json_file), enabled=True)
-        assert reloaded.labels["lbl_json"]["name"] == "json_label"
-
-    def test_auto_migration_with_labels(self, tmp_path, monkeypatch):
-        json_file = tmp_path / "legacy_labels_cache.json"
-        db_file = tmp_path / "migrated_labels.db"
-
-        legacy_data = {
-            "projects": [{"id": "p1", "name": "Work"}],
-            "tasks": {"t1": {"content": "Task 1", "parent_id": None}},
-            "labels": {"lbl_1": {"id": "lbl_1", "name": "dev", "color": "teal"}},
-            "events": {
-                "e1": {"id": "e1", "event_date": "2026-09-01T12:00:00Z", "extra_data": {"content": "Task 1"}}
-            },
-        }
-        with open(json_file, "w", encoding="utf-8") as f:
-            json.dump(legacy_data, f)
-
-        import todoist_trace
-        monkeypatch.setattr(todoist_trace, "DEFAULT_JSON_CACHE_PATH", json_file)
-
-        cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
-        assert cache.labels["lbl_1"]["name"] == "dev"
-        assert cache.labels["lbl_1"]["color"] == "teal"
-        assert len(cache.labels) == 1
-        cache.close()
 
 
 class TestMaterializedResolvedActivities:
@@ -798,27 +656,6 @@ class TestMaterializedResolvedActivities:
         cache.clear_resolved_activities()
         assert cache.get_resolved_activities_count() == 0
         cache.close()
-
-    def test_json_trace_cache_resolved_activities(self, tmp_path):
-        json_file = tmp_path / "json_resolved.json"
-        cache = TraceCache(cache_file=str(json_file), enabled=True)
-
-        recs = [
-            {"event_id": "j1", "date": "2026-09-10", "top_level_project": "work", "priority": "p1"},
-            {"event_id": "j2", "date": "2026-09-20", "top_level_project": "personal", "priority": "p4"},
-        ]
-        cache.save_resolved_activities(recs)
-        cache.save()
-        assert cache.get_resolved_activities_count() == 2
-
-        # Filter
-        assert len(cache.get_resolved_activities(category="work")) == 1
-        assert len(cache.get_resolved_activities(priority="p1")) == 1
-
-        # Reload
-        reloaded = TraceCache(cache_file=str(json_file), enabled=True)
-        assert reloaded.get_resolved_activities_count() == 2
-        assert reloaded.get_resolved_activities(category="personal")[0]["event_id"] == "j2"
 
 
 

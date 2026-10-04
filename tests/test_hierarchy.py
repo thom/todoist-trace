@@ -270,7 +270,7 @@ class TestCacheAndResolverIntegration:
         assert res_relinked["top_level_project"] == "core-platform"
         assert res_relinked["project_path"] == "legacy-experiment"
 
-    def test_category_archived_filtering(self, tmp_path):
+    def test_category_others_filtering(self, tmp_path):
         from todoist_trace.filters import filter_records
 
         records = [
@@ -284,15 +284,10 @@ class TestCacheAndResolverIntegration:
         assert len(res_work) == 1
         assert res_work[0]["task_path"] == "Task 1"
 
-        # Filter archives
-        res_arch = filter_records(records, category="archives")
-        assert len(res_arch) == 1
-        assert res_arch[0]["task_path"] == "Task 3"
-
-        # Filter archived (alias)
-        res_arch_alias = filter_records(records, category="archived")
-        assert len(res_arch_alias) == 1
-        assert res_arch_alias[0]["task_path"] == "Task 3"
+        # Filter others
+        res_others = filter_records(records, category="others")
+        assert len(res_others) == 1
+        assert res_others[0]["task_path"] == "Task 3"
 
 
 class TestHierarchyCLICommands:

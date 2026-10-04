@@ -11,7 +11,7 @@ from datetime import datetime, time, timedelta, timezone, tzinfo
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from .config import DEFAULT_CACHE_PATH, DEFAULT_JSON_CACHE_PATH, normalize_categories, resolve_timezone
+from .config import DEFAULT_CACHE_PATH, normalize_categories, resolve_timezone
 from .hierarchy import HierarchyStore
 
 
@@ -155,228 +155,6 @@ def calculate_missing_intervals(
     return missing
 
 
-class TraceCache:
-    """Manages persistent caching of projects, tasks, and activity events in JSON format."""
-
-    def __init__(
-        self,
-        cache_file: Optional[str] = None,
-        enabled: bool = True,
-        categories_config: Optional[Dict[str, Any]] = None,
-    ):
-        self.enabled = enabled
-        self.categories_config = categories_config
-        raw_path = cache_file or str(DEFAULT_JSON_CACHE_PATH)
-        self.path = Path(raw_path).expanduser()
-        self.hierarchy_store: Optional[HierarchyStore] = (
-            HierarchyStore(self.path.parent / "hierarchy.json") if self.enabled else None
-        )
-        self._projects: List[Dict[str, Any]] = []
-        self.tasks: Dict[str, Dict[str, Any]] = {}
-        self.sections: Dict[str, Dict[str, Any]] = {}
-        self.labels: Dict[str, Dict[str, Any]] = {}
-        self.events: Dict[str, Dict[str, Any]] = {}
-        self.resolved_activities: List[Dict[str, Any]] = []
-        self.sync_ranges: List[Dict[str, Any]] = []
-        self.last_sync: Optional[str] = None
-        if self.enabled:
-            self.load()
-
-    @property
-    def projects(self) -> List[Dict[str, Any]]:
-        return self._projects
-
-    @projects.setter
-    def projects(self, projs: List[Dict[str, Any]]) -> None:
-        if self.hierarchy_store:
-            self.hierarchy_store.record_batch(projs)
-            for p in projs:
-                pid = p.get("id")
-                if pid:
-                    preserved_parent = self.hierarchy_store.get_parent_id(pid)
-                    if preserved_parent and not p.get("parent_id"):
-                        p["parent_id"] = preserved_parent
-        self._projects = projs
-
-    def load(self) -> None:
-        if not self.path.is_file():
-            return
-        try:
-            with open(self.path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                loaded_projs = data.get("projects", [])
-                if self.hierarchy_store:
-                    for p in loaded_projs:
-                        pid = p.get("id")
-                        if pid:
-                            pres = self.hierarchy_store.get_parent_id(pid)
-                            if pres and not p.get("parent_id"):
-                                p["parent_id"] = pres
-                self._projects = loaded_projs
-                self.tasks = data.get("tasks", {})
-                self.sections = data.get("sections", {})
-                self.labels = data.get("labels", {})
-                self.events = data.get("events", {})
-                self.resolved_activities = data.get("resolved_activities", [])
-                self.sync_ranges = data.get("sync_ranges", [])
-                self.last_sync = data.get("last_sync")
-        except Exception as e:
-            sys.stderr.write(f"Warning: Failed to load cache from {self.path}: {e}\n")
-
-    def save(self) -> None:
-        if not self.enabled:
-            return
-        try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            temp_path = self.path.with_suffix(".tmp")
-            data = {
-                "last_sync": datetime.now(timezone.utc).isoformat(),
-                "projects": self.projects,
-                "tasks": self.tasks,
-                "sections": self.sections,
-                "labels": self.labels,
-                "events": self.events,
-                "resolved_activities": self.resolved_activities,
-                "sync_ranges": self.sync_ranges,
-            }
-            with open(temp_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-            temp_path.replace(self.path)
-        except Exception as e:
-            sys.stderr.write(f"Warning: Failed to save cache to {self.path}: {e}\n")
-
-    def get_latest_event_date(self) -> Optional[str]:
-        """Return the ISO event_date of the newest event in cache."""
-        if not self.events:
-            return None
-        return max(
-            (str(ev.get("event_date", "")) for ev in self.events.values() if ev.get("event_date")),
-            default=None,
-        )
-
-    def get_oldest_event_date(self) -> Optional[str]:
-        """Return the ISO event_date of the oldest event in cache."""
-        if not self.events:
-            return None
-        return min(
-            (str(ev.get("event_date", "")) for ev in self.events.values() if ev.get("event_date")),
-            default=None,
-        )
-
-    def get_date_bounds(self) -> Tuple[Optional[str], Optional[str]]:
-        return (self.get_oldest_event_date(), self.get_latest_event_date())
-
-    def get_last_sync(self) -> Optional[str]:
-        return self.last_sync
-
-    def merge_events(self, new_events: List[Dict[str, Any]]) -> None:
-        for ev in new_events:
-            ev_id = str(ev.get("id"))
-            if ev_id:
-                self.events[ev_id] = ev
-
-    def get_all_events(self) -> List[Dict[str, Any]]:
-        return sorted(
-            self.events.values(),
-            key=lambda x: str(x.get("event_date", "")),
-            reverse=True,
-        )
-
-    def get_events_count(self) -> int:
-        return len(self.events)
-
-    def get_sync_ranges(self) -> List[Tuple[str, str, bool]]:
-        return [
-            (r["start_time"], r["end_time"], bool(r.get("is_genesis", False)))
-            for r in self.sync_ranges
-            if "start_time" in r and "end_time" in r
-        ]
-
-    def record_sync_range(self, start_time: str, end_time: str, is_genesis: bool = False) -> None:
-        current = self.get_sync_ranges()
-        current.append((start_time, end_time, is_genesis))
-        coalesced = coalesce_intervals(current)
-        self.sync_ranges = [
-            {"start_time": s, "end_time": e, "is_genesis": g}
-            for s, e, g in coalesced
-        ]
-
-    def get_missing_ranges(
-        self,
-        req_start: Optional[str],
-        req_end: Optional[str],
-        tz: Optional[Union[str, tzinfo]] = None,
-    ) -> List[Tuple[Optional[str], Optional[str]]]:
-        return calculate_missing_intervals(self.get_sync_ranges(), req_start, req_end, tz=tz)
-
-    def is_range_cached(
-        self,
-        req_start: Optional[str],
-        req_end: Optional[str],
-        tz: Optional[Union[str, tzinfo]] = None,
-    ) -> bool:
-        return len(self.get_missing_ranges(req_start, req_end, tz=tz)) == 0
-
-    def get_events_in_range(
-        self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        tz: Optional[Union[str, tzinfo]] = None,
-    ) -> List[Dict[str, Any]]:
-        norm_start = normalize_start_date(start_date, tz=tz)
-        norm_end = normalize_end_date(end_date, tz=tz)
-        filtered = []
-        for ev in self.events.values():
-            ev_date = str(ev.get("event_date", ""))
-            if norm_start and ev_date < norm_start:
-                continue
-            if norm_end and ev_date > norm_end:
-                continue
-            filtered.append(ev)
-        return sorted(filtered, key=lambda x: str(x.get("event_date", "")), reverse=True)
-
-    def get_resolved_activities_count(self) -> int:
-        return len(self.resolved_activities)
-
-    def clear_resolved_activities(self) -> None:
-        self.resolved_activities = []
-
-    def save_resolved_activities(self, records: List[Dict[str, Any]]) -> None:
-        existing_map = {r["event_id"]: r for r in self.resolved_activities if "event_id" in r}
-        for r in records:
-            if "event_id" in r:
-                existing_map[r["event_id"]] = r
-            else:
-                existing_map[str(id(r))] = r
-        self.resolved_activities = sorted(
-            existing_map.values(),
-            key=lambda x: (str(x.get("event_date", "")), str(x.get("date", "")), str(x.get("time", ""))),
-            reverse=True,
-        )
-
-    def get_resolved_activities(
-        self,
-        category: str = "all",
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        priority: Optional[str] = None,
-        due_status: Optional[str] = None,
-        categories_config: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
-        from .filters import filter_records
-        cfg = categories_config if categories_config is not None else self.categories_config
-        res = filter_records(
-            self.resolved_activities,
-            category=category,
-            start_date=start_date,
-            end_date=end_date,
-            categories_config=cfg,
-        )
-        if priority:
-            res = [r for r in res if r.get("priority") == priority]
-        if due_status:
-            res = [r for r in res if r.get("due_status") == due_status]
-        return res
 
 
 
@@ -480,8 +258,6 @@ class SQLiteTraceCache:
             self._verify_and_backup_incompatible_db()
             self._init_db()
             if self.enabled and self.conn:
-                self._auto_migrate_if_needed()
-                self._init_sync_ranges_if_needed()
                 self._load_metadata()
 
     def _verify_and_backup_incompatible_db(self) -> None:
@@ -613,70 +389,7 @@ class SQLiteTraceCache:
             self.conn = None
             self.enabled = False
 
-    def _init_sync_ranges_if_needed(self) -> None:
-        """Initialize sync_ranges from existing events for upgraded databases."""
-        if not self.conn:
-            return
-        cur = self.conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM sync_ranges")
-        if cur.fetchone()[0] > 0:
-            return
-        cur.execute("SELECT MIN(event_date), MAX(event_date) FROM events WHERE event_date IS NOT NULL AND event_date != ''")
-        row = cur.fetchone()
-        if row and row[0] and row[1]:
-            with self.conn:
-                self.conn.execute(
-                    "INSERT INTO sync_ranges (start_time, end_time, is_genesis) VALUES (?, ?, 0)",
-                    (row[0], row[1]),
-                )
 
-    def _auto_migrate_if_needed(self) -> None:
-        """Auto-migrate legacy JSON cache into SQLite if SQLite events table is empty."""
-        if not self.conn:
-            return
-        cur = self.conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM events")
-        count = cur.fetchone()[0]
-        if count > 0:
-            return
-
-        import todoist_trace
-        dynamic_default = getattr(todoist_trace, "DEFAULT_JSON_CACHE_PATH", DEFAULT_JSON_CACHE_PATH)
-        json_candidates = [
-            Path(dynamic_default),
-            DEFAULT_JSON_CACHE_PATH,
-            Path(".todoist_cache.json"),
-        ]
-        for jpath in json_candidates:
-            if jpath.is_file():
-                try:
-                    with open(jpath, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    json_projects = data.get("projects", [])
-                    json_tasks = data.get("tasks", {})
-                    json_sections = data.get("sections", {})
-                    json_labels = data.get("labels", {})
-                    json_events = list(data.get("events", {}).values())
-
-                    if json_projects:
-                        self.projects = json_projects
-                    if json_sections:
-                        self.sections = json_sections
-                    if json_labels:
-                        self.labels = json_labels
-                    if json_tasks:
-                        for tid, tinfo in json_tasks.items():
-                            self._tasks[tid] = tinfo
-                    if json_events:
-                        self.merge_events(json_events)
-                    json_resolved = data.get("resolved_activities", [])
-                    if json_resolved:
-                        self.save_resolved_activities(json_resolved)
-
-                    print(f"Auto-migrated {len(json_events)} events, {len(json_tasks)} tasks, {len(json_sections)} sections, {len(json_labels)} labels, and {len(json_projects)} projects from {jpath.name} to SQLite cache.")
-                    break
-                except Exception as e:
-                    sys.stderr.write(f"Warning: Failed to auto-migrate from {jpath}: {e}\n")
 
     def _load_metadata(self) -> None:
         if not self.conn:
@@ -1058,7 +771,7 @@ class SQLiteTraceCache:
                     return ("(1=0)", [])
                 return ("(" + " OR ".join(clauses) + ")", p_params)
 
-            if cat_lower in ("others", "other", "archives", "archived"):
+            if cat_lower == "others":
                 work_sql, work_params = _build_cat_sql(cfg.get("work", []))
                 pers_sql, pers_params = _build_cat_sql(cfg.get("personal", []))
                 where_clauses.append(f"(((NOT {work_sql}) AND (NOT {pers_sql})) OR LOWER(top_level_project) IN ('archives', 'archived'))")
@@ -1154,14 +867,16 @@ class SQLiteTraceCache:
             self.conn = None
 
 
-def create_cache(cache_file: Optional[str] = None, enabled: bool = True, categories_config: Optional[Dict[str, Any]] = None):
-    """
-    Factory creating either SQLiteTraceCache (default, .db/.sqlite)
-    or TraceCache (.json) based on file extension.
-    """
+# Alias TraceCache to SQLiteTraceCache for API compatibility
+TraceCache = SQLiteTraceCache
+
+
+def create_cache(
+    cache_file: Optional[str] = None,
+    enabled: bool = True,
+    categories_config: Optional[Dict[str, Any]] = None,
+) -> SQLiteTraceCache:
+    """Factory creating SQLiteTraceCache instance."""
     raw_path = cache_file or str(DEFAULT_CACHE_PATH)
     path = Path(raw_path).expanduser()
-    if path.suffix == ".json":
-        return TraceCache(cache_file=str(path), enabled=enabled, categories_config=categories_config)
-    else:
-        return SQLiteTraceCache(cache_file=str(path), enabled=enabled, categories_config=categories_config)
+    return SQLiteTraceCache(cache_file=str(path), enabled=enabled, categories_config=categories_config)

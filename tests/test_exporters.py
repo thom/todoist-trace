@@ -60,16 +60,6 @@ class TestExporters:
         assert "### personal" in md_out
         assert '- Buy "groceries", apples & milk' in md_out
 
-    def test_generate_markdown_backward_compatibility_style_arg(self, sample_exporter_records):
-        # Even if legacy style="flat" is passed, clean hierarchical headings are produced
-        md_out = generate_markdown(sample_exporter_records, style="flat")
-
-        assert "## 2026-09-15" in md_out
-        assert "### work-areas" in md_out
-        assert "#### admin" in md_out
-        assert "##### email" in md_out
-        assert "- Check inbox filters / triage / urgent" in md_out
-
     def test_export_markdown_file_creation(self, sample_exporter_records, tmp_path):
         out_file = tmp_path / "nested" / "export.md"
         export_markdown(sample_exporter_records, str(out_file))
@@ -124,7 +114,7 @@ class TestExporters:
             },
         ]
         # Always hierarchical outline
-        md = generate_markdown(records, style="nested")
+        md = generate_markdown(records)
         assert "- Sprint Deliverables\n  - Client Portal\n  - Services\n    - Database\n    - Auth" in md
 
     def test_daily_overview_with_timezone_converted_records(self):
@@ -169,7 +159,7 @@ class TestExporters:
             },
         ]
 
-        md = generate_markdown(records, style="nested")
+        md = generate_markdown(records)
         assert "## 2026-10-01" in md
         assert "## 2026-09-30" not in md
         assert "- Early Morning Deliverable" in md

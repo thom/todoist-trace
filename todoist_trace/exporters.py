@@ -265,12 +265,10 @@ def format_records_with_sections(
 
 def generate_markdown(
     records: List[Dict[str, Any]],
-    style: Optional[str] = "nested",
     include_labels: bool = False,
     include_descriptions: bool = False,
     include_priorities: bool = False,
     include_due_dates: bool = False,
-    task_style: Optional[str] = None,
 ) -> str:
     """
     Format trace records into Markdown grouped by date and project hierarchy.
@@ -360,24 +358,20 @@ def generate_markdown(
 def export_markdown(
     records: List[Dict[str, Any]],
     output_path: str,
-    style: Optional[str] = "nested",
     include_labels: bool = False,
     include_descriptions: bool = False,
     include_priorities: bool = False,
     include_due_dates: bool = False,
-    task_style: Optional[str] = None,
 ) -> None:
     """Export trace records to a Markdown file."""
     path = Path(output_path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
     content = generate_markdown(
         records,
-        style=style,
         include_labels=include_labels,
         include_descriptions=include_descriptions,
         include_priorities=include_priorities,
         include_due_dates=include_due_dates,
-        task_style=task_style,
     )
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)

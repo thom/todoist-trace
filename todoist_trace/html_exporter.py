@@ -392,17 +392,6 @@ def generate_html(
       font-size: 14px;
     }}
 
-    .filter-select {{
-      padding: 8px 14px;
-      font-size: 13px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      background-color: var(--bg-card-subtle);
-      color: var(--text);
-      outline: none;
-      cursor: pointer;
-    }}
-
     /* Multiselect Dropdown Component */
     .multiselect {{
       position: relative;
@@ -1741,9 +1730,6 @@ def generate_html(
       if (r.project_levels && r.project_levels.length > 0) {{
         return r.project_levels.join(' › ');
       }}
-      if (r.project_path) {{
-        return r.project_path.split('/').join(' › ');
-      }}
       return r.top_level_project || 'Uncategorized';
     }}
 
@@ -1751,10 +1737,6 @@ def generate_html(
 
     // Helper to determine category for a record
     function getRecordCategory(r) {{
-      if (r.category) {{
-        const c = (r.category || '').toLowerCase().trim();
-        if (c && c !== 'all') return c;
-      }}
       const tp = (r.top_level_project || '').toLowerCase().trim();
       if (!tp || tp === 'archives' || tp === 'archived') return 'others';
 
@@ -1764,16 +1746,14 @@ def generate_html(
           if (pClean.endsWith('*')) {{
             const prefix = pClean.slice(0, -1);
             if (tp.startsWith(prefix)) return catName.toLowerCase();
-          }} else {{
-            if (
-              tp === pClean ||
-              tp.startsWith(pClean + '-') ||
-              tp.startsWith(pClean + '_') ||
-              tp.startsWith(pClean + ' ') ||
-              tp.startsWith(pClean + '/')
-            ) {{
-              return catName.toLowerCase();
-            }}
+          }} else if (
+            tp === pClean ||
+            tp.startsWith(pClean + '-') ||
+            tp.startsWith(pClean + '_') ||
+            tp.startsWith(pClean + ' ') ||
+            tp.startsWith(pClean + '/')
+          ) {{
+            return catName.toLowerCase();
           }}
         }}
       }}
@@ -1820,29 +1800,16 @@ def generate_html(
       openDropdownId = null;
     }}
 
-    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {{
-      document.addEventListener('click', (e) => {{
-        if (!e.target || !e.target.closest || !e.target.closest('.multiselect')) {{
-          closeAllDropdowns();
-        }}
-      }});
-      document.addEventListener('keydown', (e) => {{
-        if (e.key === 'Escape') {{
-          closeAllDropdowns();
-        }}
-      }});
-    }} else if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {{
-      window.addEventListener('click', (e) => {{
-        if (!e.target || !e.target.closest || !e.target.closest('.multiselect')) {{
-          closeAllDropdowns();
-        }}
-      }});
-      window.addEventListener('keydown', (e) => {{
-        if (e.key === 'Escape') {{
-          closeAllDropdowns();
-        }}
-      }});
-    }}
+    document.addEventListener('click', (e) => {{
+      if (!e.target || !e.target.closest || !e.target.closest('.multiselect')) {{
+        closeAllDropdowns();
+      }}
+    }});
+    document.addEventListener('keydown', (e) => {{
+      if (e.key === 'Escape') {{
+        closeAllDropdowns();
+      }}
+    }});
 
     function getSelectedValues(id) {{
       const container = document.getElementById(id);
@@ -2957,24 +2924,9 @@ def generate_html(
 
       const projContainer = document.getElementById('project-filter');
       if (projContainer) {{
-        let found = false;
         projContainer.querySelectorAll('.multiselect-options input[type="checkbox"]').forEach(cb => {{
-          if (cb.value === proj) {{
-            cb.checked = true;
-            found = true;
-          }} else {{
-            cb.checked = false;
-          }}
+          cb.checked = (cb.value === proj);
         }});
-        if (!found) {{
-          const optDiv = projContainer.querySelector('.multiselect-options');
-          if (optDiv) {{
-            const lbl = document.createElement('label');
-            lbl.className = 'multiselect-option';
-            lbl.innerHTML = `<input type="checkbox" value="${{escapeHtml(proj)}}" checked onchange="onProjectChange()"><span class="multiselect-opt-text">${{escapeHtml(proj)}}</span>`;
-            optDiv.prepend(lbl);
-          }}
-        }}
         updateMultiselectButton('project-filter');
       }}
       applyFilters();

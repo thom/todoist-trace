@@ -16,7 +16,7 @@ def filter_records(
 ) -> List[Dict[str, Any]]:
     """
     Filter records by category and date range.
-    - category: 'work', 'personal', 'others' (or 'archives'/'archived'), or 'all'
+    - category: 'work', 'personal', 'others', or 'all'
     - start_date: 'YYYY-MM-DD' (inclusive)
     - end_date: 'YYYY-MM-DD' (inclusive)
     - categories_config: optional dict mapping category names to project patterns
@@ -33,8 +33,8 @@ def filter_records(
 
         # Category check
         if cat_lower != "all":
-            if cat_lower in ("others", "other", "archives", "archived"):
-                if rec_cat != "others" and top_proj.lower() not in ("archives", "archived"):
+            if cat_lower == "others":
+                if rec_cat != "others":
                     continue
             else:
                 r_direct = (r.get("category") or "").lower()
