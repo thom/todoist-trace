@@ -295,8 +295,6 @@ def resolve_settings(args: argparse.Namespace) -> Dict[str, Any]:
     raw_cache = getattr(args, "cache_file", None) or file_cfg.get("cache_file")
     if raw_cache:
         cache_file = str(Path(raw_cache).expanduser())
-    elif Path(".todoist_cache.db").is_file():
-        cache_file = ".todoist_cache.db"
     else:
         cache_file = str(DEFAULT_CACHE_PATH)
     refresh = getattr(args, "refresh", False)

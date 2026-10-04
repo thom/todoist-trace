@@ -10,7 +10,6 @@ import tempfile
 from todoist_trace.exporters import (
     export_csv,
     export_markdown,
-    format_task_bullets,
     generate_csv,
     generate_markdown,
 )
@@ -487,10 +486,6 @@ class TestExporters:
         assert "renderSubprojectHierarchy" in html_out
         assert "btn-toggle-accordions" in html_out
         assert "toggleAllAccordions" in html_out
-        assert "renderCollapsedProjectGroups" not in html_out
-        assert "tab-pstyle-nested" not in html_out
-        assert "tab-pstyle-collapsed" not in html_out
-        assert "setProjectStyle" not in html_out
         assert ".top-project-group" in html_out
         assert ".subproject-group" in html_out
         assert "alpha-service" in html_out

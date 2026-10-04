@@ -211,13 +211,8 @@ class TestSQLiteTraceCache:
         cache.close()
 
     def test_create_cache_factory(self, tmp_path):
-        json_file = str(tmp_path / "cache.json")
         db_file = str(tmp_path / "cache.db")
         sqlite_file = str(tmp_path / "cache.sqlite")
-
-        c_json = create_cache(json_file)
-        assert isinstance(c_json, SQLiteTraceCache)
-        c_json.close()
 
         c_db = create_cache(db_file)
         assert isinstance(c_db, SQLiteTraceCache)

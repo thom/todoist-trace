@@ -150,7 +150,6 @@ def format_task_bullets(
     include_descriptions: bool = False,
     include_priorities: bool = False,
     include_due_dates: bool = False,
-    **kwargs: Any,
 ) -> List[str]:
     """Format tasks as a nested bullet hierarchy with optional metadata."""
     class TaskNode:
@@ -203,7 +202,6 @@ def format_records_with_sections(
     include_descriptions: bool = False,
     include_priorities: bool = False,
     include_due_dates: bool = False,
-    **kwargs: Any,
 ) -> List[str]:
     """
     Format records, grouping by section if any records have a section.

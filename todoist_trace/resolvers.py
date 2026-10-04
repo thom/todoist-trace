@@ -495,7 +495,7 @@ class TaskHierarchyResolver:
         """
         extra = event.get("extra_data", {})
         current_title = extra.get("content") or f"[Task {event.get('object_id', 'unknown')}]"
-        raw_parent_id = extra.get("parent_id") or event.get("parent_item_id")
+        raw_parent_id = extra.get("parent_id")
         parent_task_id = str(raw_parent_id) if raw_parent_id else ""
         raw_section_id = extra.get("section_id") or event.get("section_id")
         section_id = str(raw_section_id) if raw_section_id else ""
@@ -520,7 +520,7 @@ class TaskHierarchyResolver:
         if not raw_labels:
             raw_labels = cached_task.get("labels", [])
 
-        due_date_str = extra.get("due_date") or extra.get("completed_due_date")
+        due_date_str = extra.get("due_date")
         if not due_date_str and isinstance(cached_task.get("due"), dict):
             due_date_str = cached_task["due"].get("date")
 

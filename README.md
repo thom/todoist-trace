@@ -62,7 +62,6 @@ todoist-trace/
 │   ├── test_package.py         # Submodule and public export tests
 │   ├── test_progress.py        # Progress bars, day percentage, and ETA tests
 │   └── test_resolvers.py       # Project, section, and task tree resolution tests
-├── todoist_trace.py            # Root CLI launcher script (backward compatible)
 ├── pytest.ini                  # Pytest configuration
 ├── AGENTS.md                   # Repository conventions and guidelines
 ├── LICENSE                     # MIT License
@@ -150,8 +149,7 @@ TODOIST_TRACE_DUE_DATES=true
 # General invocation syntax:
 todoist-trace <subcommand> [options]
 
-# Or via Python module / launcher script:
-python3 todoist_trace.py <subcommand> [options]
+# Or via Python module:
 python3 -m todoist_trace <subcommand> [options]
 ```
 
@@ -182,13 +180,13 @@ Retrieves all metadata from the Todoist API and stores it in the local SQLite ca
 
 ```bash
 # Sync activities from a specific date to today:
-python3 todoist_trace.py sync -s 2026-07-01
+python3 -m todoist_trace sync -s 2026-07-01
 
 # Sync a specific date range:
-python3 todoist_trace.py sync -s 2026-07-01 -e 2026-09-30
+python3 -m todoist_trace sync -s 2026-07-01 -e 2026-09-30
 
 # Force re-fetching all data and refresh cache:
-python3 todoist_trace.py sync --refresh
+python3 -m todoist_trace sync --refresh
 ```
 
 #### 2. Export Offline from Cache (`export`)
@@ -196,20 +194,20 @@ Runs offline directly from your local SQLite cache. Slices by category, date ran
 
 ```bash
 # Export the last 30 days to Markdown with all extended metadata:
-python3 todoist_trace.py export -f markdown -s 2026-09-02 -e 2026-10-02 --all-fields -o my_trace.md
+python3 -m todoist_trace export -f markdown -s 2026-09-02 -e 2026-10-02 --all-fields -o my_trace.md
 
 # Export work projects to CSV:
-python3 todoist_trace.py export -c work -f csv -o work_activities.csv
+python3 -m todoist_trace export -c work -f csv -o work_activities.csv
 
 # Generate interactive HTML dashboard with charts and filters:
-python3 todoist_trace.py export -f html --all-fields -o activity_dashboard.html
+python3 -m todoist_trace export -f html --all-fields -o activity_dashboard.html
 ```
 
 #### 3. Check Cache Status (`status`)
 Inspects your local cache database, showing file size, entity counts, date boundaries, and synced UTC intervals:
 
 ```bash
-python3 todoist_trace.py status
+python3 -m todoist_trace status
 ```
 
 Output example:
@@ -237,10 +235,10 @@ Combines `sync` and `export` in a single step (ideal for one-shot runs or cron j
 
 ```bash
 # Explicit run subcommand:
-python3 todoist_trace.py run -s 2026-09-01 -f markdown -o monthly.md
+python3 -m todoist_trace run -s 2026-09-01 -f markdown -o monthly.md
 
 # Direct flag-only invocation (automatically defaults to 'run'):
-python3 todoist_trace.py -s 2026-09-01 -f markdown -o monthly.md
+python3 -m todoist_trace -s 2026-09-01 -f markdown -o monthly.md
 ```
 
 ---
