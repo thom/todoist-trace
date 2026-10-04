@@ -777,15 +777,29 @@ if (cardP4.includes("badge-p4") || cardP4.includes("P4")) {
 
         html_out = generate_html(records, title="Controls Test")
 
-        # Date range picker inputs
+        # Date range picker inputs and single dropdown
         assert 'id="date-from"' in html_out
         assert 'id="date-to"' in html_out
         assert 'id="btn-clear-date"' in html_out
         assert 'id="date-presets"' in html_out
+        assert 'id="date-range-dropdown"' in html_out
+        assert 'id="date-range-btn"' in html_out
         assert "setDatePreset" in html_out
+        assert "applyCustomDateRange" in html_out
         assert "clearDateRange" in html_out
         assert "onDateRangeChange" in html_out
         assert "initDatePickers" in html_out
+
+        # Calendar period presets
+        assert 'data-preset="cur_week"' in html_out
+        assert 'data-preset="prev_week"' in html_out
+        assert 'data-preset="cur_month"' in html_out
+        assert 'data-preset="last_month"' in html_out
+        assert 'data-preset="cur_quarter"' in html_out
+        assert 'data-preset="last_quarter"' in html_out
+        assert 'data-preset="7d"' not in html_out
+        assert 'data-preset="30d"' not in html_out
+        assert 'data-preset="90d"' not in html_out
 
         # Day expand / collapse toggle controls
         assert "toggleAllDays" in html_out

@@ -252,6 +252,12 @@ def generate_html(
       padding: 6px 10px;
     }}
 
+    .btn-sm {{
+      padding: 4px 10px;
+      font-size: 12px;
+      border-radius: 6px;
+    }}
+
     /* KPI Summary Cards Grid */
     .kpi-grid {{
       display: grid;
@@ -611,20 +617,9 @@ def generate_html(
     .date-filter-row {{
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       flex-wrap: wrap;
       padding-top: 2px;
-    }}
-
-    .date-picker-group {{
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }}
-
-    .date-picker-icon {{
-      font-size: 14px;
-      color: var(--text-dim);
     }}
 
     .date-label {{
@@ -634,18 +629,76 @@ def generate_html(
       user-select: none;
     }}
 
-    .date-inputs-wrap {{
+    /* Date Range Dropdown */
+    .date-range-dropdown {{
+      position: relative;
+      display: inline-block;
+    }}
+
+    .date-range-btn {{
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      background-color: var(--bg-card-subtle);
-      border: 1px solid var(--border);
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 500;
       border-radius: 8px;
-      padding: 3px 8px;
+      border: 1px solid var(--border);
+      background-color: var(--bg-card-subtle);
+      color: var(--text);
+      outline: none;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }}
+
+    .date-range-btn:hover {{
+      background-color: var(--bg-hover);
+      border-color: var(--text-dim);
+    }}
+
+    .date-range-dropdown.open .date-range-btn {{
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-light);
+    }}
+
+    .date-range-btn.has-value {{
+      border-color: var(--accent);
+      background-color: var(--accent-light);
+      color: var(--accent);
+      font-weight: 600;
+    }}
+
+    .date-range-menu {{
+      min-width: 250px;
+      padding: 12px;
+      gap: 10px;
+    }}
+
+    .date-range-title {{
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-dim);
+      margin-bottom: 2px;
+    }}
+
+    .date-input-field {{
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }}
+
+    .date-input-field label {{
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
     }}
 
     .filter-date-input {{
-      padding: 4px 6px;
+      width: 100%;
+      padding: 6px 8px;
       font-size: 12px;
       font-family: inherit;
       border: 1px solid var(--border);
@@ -666,31 +719,14 @@ def generate_html(
       border-color: var(--accent);
     }}
 
-    .date-sep {{
-      font-size: 12px;
-      color: var(--text-dim);
-      font-weight: 500;
-      user-select: none;
-    }}
-
-    .btn-clear-date {{
-      background: transparent;
-      border: none;
-      color: var(--text-dim);
-      font-size: 13px;
-      cursor: pointer;
-      padding: 2px 6px;
-      border-radius: 4px;
-      transition: all 0.15s ease;
-      line-height: 1;
-      display: inline-flex;
+    .date-range-actions {{
+      display: flex;
       align-items: center;
-      justify-content: center;
-    }}
-
-    .btn-clear-date:hover {{
-      color: var(--text);
-      background-color: var(--bg-hover);
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 4px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
     }}
 
     .btn-toggle-days {{
@@ -1450,22 +1486,37 @@ def generate_html(
       </div>
 
       <div class="filter-row date-filter-row">
-        <div class="date-picker-group">
-          <span class="date-picker-icon">📅</span>
-          <span class="date-label">Period:</span>
-          <div class="date-inputs-wrap">
-            <input type="date" id="date-from" class="filter-date-input" title="Start date (from)" onchange="onDateRangeChange()">
-            <span class="date-sep">to</span>
-            <input type="date" id="date-to" class="filter-date-input" title="End date (to)" onchange="onDateRangeChange()">
-            <button type="button" class="btn-clear-date" id="btn-clear-date" onclick="clearDateRange()" title="Clear date range">✕</button>
-          </div>
-        </div>
+        <span class="date-label">Period:</span>
         <div class="filter-pills" id="date-presets">
           <span class="pill active" data-preset="all" onclick="setDatePreset('all')">All Time</span>
-          <span class="pill" data-preset="7d" onclick="setDatePreset('7d')">Last 7d</span>
-          <span class="pill" data-preset="30d" onclick="setDatePreset('30d')">Last 30d</span>
-          <span class="pill" data-preset="90d" onclick="setDatePreset('90d')">Last 90d</span>
-          <span class="pill" data-preset="month" onclick="setDatePreset('month')">This Month</span>
+          <span class="pill" data-preset="cur_week" onclick="setDatePreset('cur_week')">Current Week</span>
+          <span class="pill" data-preset="prev_week" onclick="setDatePreset('prev_week')">Previous Week</span>
+          <span class="pill" data-preset="cur_month" onclick="setDatePreset('cur_month')">This Month</span>
+          <span class="pill" data-preset="last_month" onclick="setDatePreset('last_month')">Last Month</span>
+          <span class="pill" data-preset="cur_quarter" onclick="setDatePreset('cur_quarter')">Current Quarter</span>
+          <span class="pill" data-preset="last_quarter" onclick="setDatePreset('last_quarter')">Last Quarter</span>
+        </div>
+        <div class="multiselect date-range-dropdown" id="date-range-dropdown">
+          <button type="button" class="date-range-btn" id="date-range-btn" onclick="toggleDropdown('date-range-dropdown')">
+            <span>📅</span>
+            <span class="date-range-label" id="date-range-label">Custom Range</span>
+            <span class="multiselect-arrow">▾</span>
+          </button>
+          <div class="multiselect-menu date-range-menu">
+            <div class="date-range-title">Custom Date Range</div>
+            <div class="date-input-field">
+              <label for="date-from">Start Date (From)</label>
+              <input type="date" id="date-from" class="filter-date-input" onkeydown="if(event.key==='Enter') applyCustomDateRange()">
+            </div>
+            <div class="date-input-field">
+              <label for="date-to">End Date (To)</label>
+              <input type="date" id="date-to" class="filter-date-input" onkeydown="if(event.key==='Enter') applyCustomDateRange()">
+            </div>
+            <div class="date-range-actions">
+              <button type="button" class="btn btn-sm" id="btn-clear-date" onclick="clearDateRange()">Clear</button>
+              <button type="button" class="btn btn-sm btn-primary" onclick="applyCustomDateRange()">Apply</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1659,9 +1710,7 @@ def generate_html(
       const dateFrom = document.getElementById('date-from');
       const dateTo = document.getElementById('date-to');
       if (dateFrom && bounds.min) dateFrom.min = bounds.min;
-      if (dateFrom && bounds.max) dateFrom.max = bounds.max;
       if (dateTo && bounds.min) dateTo.min = bounds.min;
-      if (dateTo && bounds.max) dateTo.max = bounds.max;
     }}
 
     function updatePresetPills(activePreset) {{
@@ -1673,55 +1722,125 @@ def generate_html(
     function setDatePreset(preset) {{
       const dateFrom = document.getElementById('date-from');
       const dateTo = document.getElementById('date-to');
+      const rangeLabel = document.getElementById('date-range-label');
+      const rangeBtn = document.getElementById('date-range-btn');
       if (!dateFrom || !dateTo) return;
 
       activeDayFilter = null;
 
+      const ref = getReferenceDate();
+      const year = ref.getFullYear();
+      const month = ref.getMonth(); // 0 to 11
+      const day = ref.getDate();
+      const dayOfWeek = ref.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+
       if (preset === 'all') {{
         dateFrom.value = '';
         dateTo.value = '';
-      }} else if (preset === '7d') {{
-        const end = getReferenceDate();
-        const start = new Date(end);
-        start.setDate(start.getDate() - 6);
+      }} else if (preset === 'cur_week') {{
+        // Current week (Mon - Sun)
+        const distToMon = (dayOfWeek === 0 ? 6 : dayOfWeek - 1);
+        const mon = new Date(year, month, day - distToMon);
+        const sun = new Date(year, month, day - distToMon + 6);
+        dateFrom.value = formatDateIso(mon);
+        dateTo.value = formatDateIso(sun);
+      }} else if (preset === 'prev_week') {{
+        // Previous week (Mon - Sun)
+        const distToMon = (dayOfWeek === 0 ? 6 : dayOfWeek - 1);
+        const prevMon = new Date(year, month, day - distToMon - 7);
+        const prevSun = new Date(year, month, day - distToMon - 1);
+        dateFrom.value = formatDateIso(prevMon);
+        dateTo.value = formatDateIso(prevSun);
+      }} else if (preset === 'cur_month' || preset === 'month') {{
+        const start = new Date(year, month, 1);
+        const end = new Date(year, month + 1, 0);
         dateFrom.value = formatDateIso(start);
         dateTo.value = formatDateIso(end);
-      }} else if (preset === '30d') {{
-        const end = getReferenceDate();
-        const start = new Date(end);
-        start.setDate(start.getDate() - 29);
+      }} else if (preset === 'last_month') {{
+        const start = new Date(year, month - 1, 1);
+        const end = new Date(year, month, 0);
         dateFrom.value = formatDateIso(start);
         dateTo.value = formatDateIso(end);
-      }} else if (preset === '90d') {{
-        const end = getReferenceDate();
-        const start = new Date(end);
-        start.setDate(start.getDate() - 89);
+      }} else if (preset === 'cur_quarter') {{
+        // Quarters: Jan-Mar, Apr-Jun, Jul-Sep, Oct-Dec
+        const qIndex = Math.floor(month / 3);
+        const start = new Date(year, qIndex * 3, 1);
+        const end = new Date(year, (qIndex + 1) * 3, 0);
         dateFrom.value = formatDateIso(start);
         dateTo.value = formatDateIso(end);
-      }} else if (preset === 'month') {{
-        const end = getReferenceDate();
-        const start = new Date(end.getFullYear(), end.getMonth(), 1);
+      }} else if (preset === 'last_quarter') {{
+        const qIndex = Math.floor(month / 3);
+        const start = new Date(year, (qIndex - 1) * 3, 1);
+        const end = new Date(year, qIndex * 3, 0);
         dateFrom.value = formatDateIso(start);
         dateTo.value = formatDateIso(end);
       }}
+
+      if (rangeLabel) rangeLabel.textContent = 'Custom Range';
+      if (rangeBtn) rangeBtn.classList.remove('has-value');
 
       updatePresetPills(preset);
       applyFilters();
     }}
 
-    function onDateRangeChange() {{
+    function applyCustomDateRange() {{
+      const dateFrom = document.getElementById('date-from');
+      const dateTo = document.getElementById('date-to');
+      const rangeLabel = document.getElementById('date-range-label');
+      const rangeBtn = document.getElementById('date-range-btn');
+      if (!dateFrom || !dateTo) return;
+
+      let fromVal = dateFrom.value;
+      let toVal = dateTo.value;
+
+      if (fromVal && toVal && fromVal > toVal) {{
+        const tmp = fromVal;
+        fromVal = toVal;
+        toVal = tmp;
+        dateFrom.value = fromVal;
+        dateTo.value = toVal;
+      }}
+
       activeDayFilter = null;
-      updatePresetPills(null);
+
+      if (fromVal || toVal) {{
+        updatePresetPills(null);
+        if (rangeBtn) rangeBtn.classList.add('has-value');
+        if (rangeLabel) {{
+          if (fromVal && toVal) {{
+            rangeLabel.textContent = `${{fromVal}} → ${{toVal}}`;
+          }} else if (fromVal) {{
+            rangeLabel.textContent = `From ${{fromVal}}`;
+          }} else {{
+            rangeLabel.textContent = `Until ${{toVal}}`;
+          }}
+        }}
+      }} else {{
+        updatePresetPills('all');
+        if (rangeBtn) rangeBtn.classList.remove('has-value');
+        if (rangeLabel) rangeLabel.textContent = 'Custom Range';
+      }}
+
+      closeAllDropdowns();
       applyFilters();
+    }}
+
+    function onDateRangeChange() {{
+      applyCustomDateRange();
     }}
 
     function clearDateRange() {{
       const dateFrom = document.getElementById('date-from');
       const dateTo = document.getElementById('date-to');
+      const rangeLabel = document.getElementById('date-range-label');
+      const rangeBtn = document.getElementById('date-range-btn');
       if (dateFrom) dateFrom.value = '';
       if (dateTo) dateTo.value = '';
+      if (rangeBtn) rangeBtn.classList.remove('has-value');
+      if (rangeLabel) rangeLabel.textContent = 'Custom Range';
       activeDayFilter = null;
       updatePresetPills('all');
+      closeAllDropdowns();
       applyFilters();
     }}
 
@@ -2127,6 +2246,10 @@ def generate_html(
       const dateTo = document.getElementById('date-to');
       if (dateFrom) dateFrom.value = '';
       if (dateTo) dateTo.value = '';
+      const rangeLabel = document.getElementById('date-range-label');
+      const rangeBtn = document.getElementById('date-range-btn');
+      if (rangeBtn) rangeBtn.classList.remove('has-value');
+      if (rangeLabel) rangeLabel.textContent = 'Custom Range';
       updatePresetPills('all');
       activeDayFilter = null;
 
