@@ -2064,6 +2064,9 @@ def generate_html(
           calHover = null;
           if (dateTo) dateTo.value = calEnd;
           renderCalendar();
+          setTimeout(() => {{
+            applyCustomDateRange();
+          }}, 160);
         }}
       }}
     }}
@@ -2116,7 +2119,7 @@ def generate_html(
       if (!preview) return;
 
       if (calStart && calEnd) {{
-        preview.textContent = `${{calStart}} → ${{calEnd}} (Click Apply)`;
+        preview.textContent = `${{calStart}} → ${{calEnd}}`;
       }} else if (calStart && calHover && calHover >= calStart) {{
         preview.textContent = `${{calStart}} → ${{calHover}} (click to set)`;
       }} else if (calStart) {{
@@ -2128,6 +2131,11 @@ def generate_html(
 
     function onManualDateInputChange() {{
       syncCalendarFromInputs();
+      const dateFrom = document.getElementById('date-from');
+      const dateTo = document.getElementById('date-to');
+      if (dateFrom && dateFrom.value && dateTo && dateTo.value) {{
+        applyCustomDateRange();
+      }}
     }}
 
     function initDatePickers() {{
