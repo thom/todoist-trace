@@ -802,6 +802,48 @@ if (cardP4.includes("badge-p4") || cardP4.includes("P4")) {
         assert "btn-toggle-accordions" in html_out
         assert "Collapse All Days" in html_out
 
+    def test_generate_html_cascading_project_filters_and_specific_projects(self):
+        """Verify 3-tier filtering: Category -> Parent Project -> Specific Project."""
+        from todoist_trace.exporters import generate_html
+
+        records = [
+            {
+                "top_level_project": "work-areas",
+                "project_path": "backend",
+                "project_levels": ["backend"],
+                "date": "2026-10-01",
+                "time": "10:00:00",
+                "task_path": "DB Migration",
+                "task_levels": ["DB Migration"],
+            },
+            {
+                "top_level_project": "personal",
+                "project_path": "fitness",
+                "project_levels": ["fitness"],
+                "date": "2026-10-01",
+                "time": "18:00:00",
+                "task_path": "Running",
+                "task_levels": ["Running"],
+            },
+        ]
+
+        html_out = generate_html(records, title="3-Tier Filter Test")
+
+        # Dropdowns
+        assert 'id="category-filter"' in html_out
+        assert 'id="parent-project-filter"' in html_out
+        assert 'id="project-filter"' in html_out
+
+        # JavaScript functions
+        assert "updateProjectDropdowns" in html_out
+        assert "onCategoryChange" in html_out
+        assert "onParentProjectChange" in html_out
+        assert "getRecordProject" in html_out
+
+        # Table header
+        assert "Parent Project ⬍" in html_out
+
+
 
 
 

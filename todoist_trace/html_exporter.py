@@ -1143,11 +1143,14 @@ def generate_html(
           <span class="search-icon">🔍</span>
           <input type="text" id="search-box" class="search-input" placeholder="Search tasks, descriptions, projects, or @tags..." oninput="onSearchChange()">
         </div>
-        <select id="category-filter" class="filter-select" onchange="applyFilters()">
+        <select id="category-filter" class="filter-select" onchange="onCategoryChange()">
           <option value="all">All Categories</option>
           <option value="work">Work</option>
           <option value="personal">Personal</option>
           <option value="archives">Archives</option>
+        </select>
+        <select id="parent-project-filter" class="filter-select" onchange="onParentProjectChange()">
+          <option value="all">All Parent Projects</option>
         </select>
         <select id="project-filter" class="filter-select" onchange="applyFilters()">
           <option value="all">All Projects</option>
@@ -1217,7 +1220,7 @@ def generate_html(
           <thead>
             <tr>
               <th onclick="sortTable('date')">Date & Time ⬍</th>
-              <th onclick="sortTable('top_level_project')">Top Project ⬍</th>
+              <th onclick="sortTable('top_level_project')">Parent Project ⬍</th>
               <th onclick="sortTable('project_path')">Project / Section ⬍</th>
               <th onclick="sortTable('task_path')">Task Hierarchy ⬍</th>
               <th onclick="sortTable('priority')">Priority ⬍</th>
@@ -1435,22 +1438,91 @@ def generate_html(
       applyFilters();
     }}
 
-    // Filter Options Initialization
-    function initFilterDropdowns() {{
+    // Helper to extract the actual specific project name for a task
+    function getRecordProject(r) {{
+      if (r.project_levels && r.project_levels.length > 0) {{
+        return r.project_levels.join(' › ');
+      }}
+      if (r.project_path) {{
+        return r.project_path.split('/').join(' › ');
+      }}
+      return r.top_level_project || 'Uncategorized';
+    }}
+
+    // Cascading Filter Dropdowns Initialization & Synchronization
+    function updateProjectDropdowns() {{
+      const cat = document.getElementById('category-filter') ? document.getElementById('category-filter').value : 'all';
+      const parentSelect = document.getElementById('parent-project-filter');
       const projSelect = document.getElementById('project-filter');
-      const projects = [...new Set(rawRecords.map(r => r.top_level_project).filter(Boolean))].sort();
-      projects.forEach(p => {{
-        const opt = document.createElement('option');
-        opt.value = p;
-        opt.textContent = p;
-        projSelect.appendChild(opt);
+      if (!parentSelect || !projSelect) return;
+
+      const currentParent = parentSelect.value;
+      const currentProj = projSelect.value;
+
+      // 1. Records matching current category
+      const catRecords = rawRecords.filter(r => {{
+        if (cat === 'all') return true;
+        const tp = (r.top_level_project || '').toLowerCase();
+        const recCat = (r.category || '').toLowerCase();
+        if (cat === 'work') return tp.startsWith('work') || recCat === 'work';
+        if (cat === 'personal') return tp.startsWith('personal') || recCat === 'personal';
+        if (cat === 'archives' || cat === 'archived') return tp === 'archives' || tp === 'archived' || recCat === 'archives' || recCat === 'archived';
+        return tp === cat || recCat === cat;
       }});
+
+      // 2. Unique parent projects for this category
+      const parentProjects = [...new Set(catRecords.map(r => r.top_level_project).filter(Boolean))].sort();
+
+      let parentOpts = '<option value="all">All Parent Projects</option>';
+      parentProjects.forEach(p => {{
+        const isSel = p === currentParent ? ' selected' : '';
+        parentOpts += `<option value="${{escapeHtml(p)}}"${{isSel}}>${{escapeHtml(p)}}</option>`;
+      }});
+      parentSelect.innerHTML = parentOpts;
+
+      // 3. Filter for active parent project if selected
+      const activeParent = parentSelect.value;
+      const parentFiltered = catRecords.filter(r => {{
+        if (activeParent === 'all') return true;
+        return r.top_level_project === activeParent;
+      }});
+
+      // 4. Unique specific projects
+      const specificProjects = [...new Set(parentFiltered.map(r => getRecordProject(r)).filter(Boolean))].sort();
+
+      let projOpts = '<option value="all">All Projects</option>';
+      specificProjects.forEach(p => {{
+        const isSel = p === currentProj ? ' selected' : '';
+        projOpts += `<option value="${{escapeHtml(p)}}"${{isSel}}>${{escapeHtml(p)}}</option>`;
+      }});
+      projSelect.innerHTML = projOpts;
+    }}
+
+    function initFilterDropdowns() {{
+      updateProjectDropdowns();
+    }}
+
+    function onCategoryChange() {{
+      const parentSelect = document.getElementById('parent-project-filter');
+      const projSelect = document.getElementById('project-filter');
+      if (parentSelect) parentSelect.value = 'all';
+      if (projSelect) projSelect.value = 'all';
+      updateProjectDropdowns();
+      applyFilters();
+    }}
+
+    function onParentProjectChange() {{
+      const projSelect = document.getElementById('project-filter');
+      if (projSelect) projSelect.value = 'all';
+      updateProjectDropdowns();
+      applyFilters();
     }}
 
     // Apply Active Filters
     function applyFilters() {{
       const query = (document.getElementById('search-box').value || '').toLowerCase().trim();
       const cat = document.getElementById('category-filter').value;
+      const parentProj = document.getElementById('parent-project-filter') ? document.getElementById('parent-project-filter').value : 'all';
       const proj = document.getElementById('project-filter').value;
       const prio = document.getElementById('priority-filter').value;
       const due = document.getElementById('due-filter').value;
@@ -1458,6 +1530,7 @@ def generate_html(
       const dateTo = document.getElementById('date-to') ? document.getElementById('date-to').value : '';
 
       filteredRecords = rawRecords.filter(r => {{
+        // Category check
         if (cat !== 'all') {{
           const tp = (r.top_level_project || '').toLowerCase();
           const recCat = (r.category || '').toLowerCase();
@@ -1471,9 +1544,20 @@ def generate_html(
             if (tp !== cat && recCat !== cat) return false;
           }}
         }}
-        if (proj !== 'all' && r.top_level_project !== proj) return false;
+
+        // Parent Project check
+        if (parentProj !== 'all' && r.top_level_project !== parentProj) return false;
+
+        // Specific Project check
+        if (proj !== 'all' && getRecordProject(r) !== proj) return false;
+
+        // Priority check
         if (prio !== 'all' && (r.priority || '').toLowerCase() !== prio) return false;
+
+        // Due check
         if (due !== 'all' && (r.due_status || '') !== due) return false;
+
+        // Day click check
         if (activeDayFilter && r.date !== activeDayFilter) return false;
 
         // Date range filter
@@ -1523,6 +1607,8 @@ def generate_html(
     function resetFilters() {{
       document.getElementById('search-box').value = '';
       document.getElementById('category-filter').value = 'all';
+      const parentSelect = document.getElementById('parent-project-filter');
+      if (parentSelect) parentSelect.value = 'all';
       document.getElementById('project-filter').value = 'all';
       document.getElementById('priority-filter').value = 'all';
       document.getElementById('due-filter').value = 'all';
@@ -1532,6 +1618,7 @@ def generate_html(
       if (dateTo) dateTo.value = '';
       updatePresetPills('all');
       activeDayFilter = null;
+      updateProjectDropdowns();
       applyFilters();
     }}
 
@@ -1558,18 +1645,18 @@ def generate_html(
         document.getElementById('kpi-ontime-sub').textContent = 'No dated tasks';
       }}
 
-      // Top Project
+      // Top Project KPI (Actual specific project)
       const projCounts = {{}};
       filteredRecords.forEach(r => {{
-        const p = r.top_level_project || 'Uncategorized';
+        const p = getRecordProject(r);
         projCounts[p] = (projCounts[p] || 0) + 1;
       }});
       let topProj = '-';
       let topCount = 0;
       for (const [p, c] of Object.entries(projCounts)) {{
-        // Exclude the generic 'archives' bucket from the Top Project KPI if other projects exist
+        // Exclude generic buckets from the Top Project KPI if other projects exist
         const pLow = p.toLowerCase();
-        if ((pLow === 'archives' || pLow === 'archived') && Object.keys(projCounts).length > 1) continue;
+        if ((pLow === 'archives' || pLow === 'archived' || pLow === 'uncategorized') && Object.keys(projCounts).length > 1) continue;
         if (c > topCount) {{
           topProj = p;
           topCount = c;
@@ -2155,7 +2242,7 @@ def generate_html(
 
       const projCounts = {{}};
       filteredRecords.forEach(r => {{
-        const p = r.top_level_project || 'Uncategorized';
+        const p = getRecordProject(r);
         projCounts[p] = (projCounts[p] || 0) + 1;
       }});
 
@@ -2163,7 +2250,7 @@ def generate_html(
       const sorted = Object.entries(projCounts).sort((a, b) => b[1] - a[1]);
 
       let html = '';
-      sorted.slice(0, 6).forEach(([proj, count]) => {{
+      sorted.slice(0, 8).forEach(([proj, count]) => {{
         const pct = Math.round((count / total) * 100);
         html += `
           <div>
@@ -2178,11 +2265,27 @@ def generate_html(
         `;
       }});
 
-      container.innerHTML = html;
+      container.innerHTML = html || '<div class="empty-state" style="padding: 20px;">No projects</div>';
     }}
 
     function filterByProject(proj) {{
-      document.getElementById('project-filter').value = proj;
+      const projSelect = document.getElementById('project-filter');
+      if (projSelect) {{
+        let exists = false;
+        for (let i = 0; i < projSelect.options.length; i++) {{
+          if (projSelect.options[i].value === proj) {{
+            exists = true;
+            break;
+          }}
+        }}
+        if (!exists) {{
+          const opt = document.createElement('option');
+          opt.value = proj;
+          opt.textContent = proj;
+          projSelect.appendChild(opt);
+        }}
+        projSelect.value = proj;
+      }}
       applyFilters();
     }}
 
