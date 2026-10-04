@@ -34,17 +34,20 @@ def generate_html(
     norm_categories = normalize_categories(categories_config)
     categories_json = json.dumps(norm_categories)
 
-    # Build dynamic category select options
+    # Build dynamic category checkbox options
     category_options = [
-        '<option value="all">All Categories</option>',
-        '<option value="work">Work</option>',
-        '<option value="personal">Personal</option>',
+        '<label class="multiselect-option"><input type="checkbox" value="work" onchange="onCategoryChange()"><span class="multiselect-opt-text">Work</span></label>',
+        '<label class="multiselect-option"><input type="checkbox" value="personal" onchange="onCategoryChange()"><span class="multiselect-opt-text">Personal</span></label>',
     ]
     for cat_key in norm_categories:
         if cat_key not in ("work", "personal"):
-            category_options.append(f'<option value="{html.escape(cat_key)}">{html.escape(cat_key.capitalize())}</option>')
-    category_options.append('<option value="others">Others (Unassigned)</option>')
-    category_options_html = "\n          ".join(category_options)
+            category_options.append(
+                f'<label class="multiselect-option"><input type="checkbox" value="{html.escape(cat_key)}" onchange="onCategoryChange()"><span class="multiselect-opt-text">{html.escape(cat_key.capitalize())}</span></label>'
+            )
+    category_options.append(
+        '<label class="multiselect-option"><input type="checkbox" value="others" onchange="onCategoryChange()"><span class="multiselect-opt-text">Others (Unassigned)</span></label>'
+    )
+    category_options_html = "\n              ".join(category_options)
 
     # Pre-calculate initial summary stats for SSR fallback
     total_records = len(records)
@@ -398,6 +401,190 @@ def generate_html(
       color: var(--text);
       outline: none;
       cursor: pointer;
+    }}
+
+    /* Multiselect Dropdown Component */
+    .multiselect {{
+      position: relative;
+      display: inline-block;
+      user-select: none;
+    }}
+
+    .multiselect-btn {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 7px 12px;
+      font-size: 13px;
+      font-weight: 500;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background-color: var(--bg-card-subtle);
+      color: var(--text);
+      outline: none;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+      min-width: 140px;
+      max-width: 220px;
+    }}
+
+    .multiselect-btn:hover {{
+      background-color: var(--bg-hover);
+      border-color: var(--text-dim);
+    }}
+
+    .multiselect.open .multiselect-btn {{
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-light);
+    }}
+
+    .multiselect-label {{
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: left;
+      flex: 1;
+    }}
+
+    .multiselect-arrow {{
+      font-size: 10px;
+      color: var(--text-dim);
+      transition: transform 0.2s ease;
+      flex-shrink: 0;
+    }}
+
+    .multiselect.open .multiselect-arrow {{
+      transform: rotate(180deg);
+      color: var(--accent);
+    }}
+
+    .multiselect-menu {{
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      min-width: 220px;
+      max-width: 320px;
+      background-color: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+      z-index: 100;
+      padding: 8px;
+      flex-direction: column;
+      gap: 6px;
+    }}
+
+    :root[data-theme="light"] .multiselect-menu {{
+      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.15), 0 8px 10px -6px rgba(15, 23, 42, 0.1);
+    }}
+
+    .multiselect.open .multiselect-menu {{
+      display: flex;
+    }}
+
+    .multiselect-actions {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border-subtle);
+    }}
+
+    .multiselect-action-btn {{
+      background: transparent;
+      border: none;
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 3px 6px;
+      border-radius: 4px;
+      transition: background-color 0.15s ease;
+    }}
+
+    .multiselect-action-btn:hover {{
+      background-color: var(--accent-light);
+    }}
+
+    .multiselect-search-wrap {{
+      position: relative;
+      margin: 2px 0;
+    }}
+
+    .multiselect-search {{
+      width: 100%;
+      padding: 5px 8px;
+      font-size: 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background-color: var(--bg-card-subtle);
+      color: var(--text);
+      outline: none;
+    }}
+
+    .multiselect-search:focus {{
+      border-color: var(--accent);
+    }}
+
+    .multiselect-options {{
+      max-height: 220px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding-right: 2px;
+    }}
+
+    .multiselect-options::-webkit-scrollbar {{
+      width: 4px;
+    }}
+
+    .multiselect-options::-webkit-scrollbar-thumb {{
+      background-color: var(--border);
+      border-radius: 4px;
+    }}
+
+    .multiselect-option {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--text);
+      transition: background-color 0.12s ease;
+      user-select: none;
+    }}
+
+    .multiselect-option:hover {{
+      background-color: var(--bg-hover);
+    }}
+
+    .multiselect-option input[type="checkbox"] {{
+      cursor: pointer;
+      width: 14px;
+      height: 14px;
+      accent-color: var(--accent);
+      flex-shrink: 0;
+    }}
+
+    .multiselect-opt-text {{
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+
+    .multiselect-empty {{
+      padding: 10px 8px;
+      font-size: 12px;
+      color: var(--text-dim);
+      text-align: center;
     }}
 
     .filter-pills {{
@@ -1183,29 +1370,93 @@ def generate_html(
           <span class="search-icon">🔍</span>
           <input type="text" id="search-box" class="search-input" placeholder="Search tasks, descriptions, projects, or @tags..." oninput="onSearchChange()">
         </div>
-        <select id="category-filter" class="filter-select" onchange="onCategoryChange()">
-          {category_options_html}
-        </select>
-        <select id="parent-project-filter" class="filter-select" onchange="onParentProjectChange()">
-          <option value="all">All Parent Projects</option>
-        </select>
-        <select id="project-filter" class="filter-select" onchange="applyFilters()">
-          <option value="all">All Projects</option>
-        </select>
-        <select id="priority-filter" class="filter-select" onchange="applyFilters()">
-          <option value="all">All Priorities</option>
-          <option value="p1">P1 (Urgent)</option>
-          <option value="p2">P2 (High)</option>
-          <option value="p3">P3 (Medium)</option>
-          <option value="p4">P4 (Normal)</option>
-        </select>
-        <select id="due-filter" class="filter-select" onchange="applyFilters()">
-          <option value="all">All Due Statuses</option>
-          <option value="overdue">Overdue</option>
-          <option value="on_time">On Time</option>
-          <option value="early">Early</option>
-          <option value="undated">Undated</option>
-        </select>
+        <div class="multiselect" id="category-filter" data-name="Categories" data-default="All Categories">
+          <button type="button" class="multiselect-btn" onclick="toggleDropdown('category-filter')">
+            <span class="multiselect-label">All Categories</span>
+            <span class="multiselect-arrow">▾</span>
+          </button>
+          <div class="multiselect-menu">
+            <div class="multiselect-actions">
+              <button type="button" class="multiselect-action-btn" onclick="selectAllOptions('category-filter')">All</button>
+              <button type="button" class="multiselect-action-btn" onclick="clearAllOptions('category-filter')">Clear</button>
+            </div>
+            <div class="multiselect-options">
+              {category_options_html}
+            </div>
+          </div>
+        </div>
+
+        <div class="multiselect" id="parent-project-filter" data-name="Parent Projects" data-default="All Parent Projects">
+          <button type="button" class="multiselect-btn" onclick="toggleDropdown('parent-project-filter')">
+            <span class="multiselect-label">All Parent Projects</span>
+            <span class="multiselect-arrow">▾</span>
+          </button>
+          <div class="multiselect-menu">
+            <div class="multiselect-actions">
+              <button type="button" class="multiselect-action-btn" onclick="selectAllOptions('parent-project-filter')">All</button>
+              <button type="button" class="multiselect-action-btn" onclick="clearAllOptions('parent-project-filter')">Clear</button>
+            </div>
+            <div class="multiselect-search-wrap">
+              <input type="text" class="multiselect-search" placeholder="Search parent projects..." oninput="filterDropdownOptions('parent-project-filter', this.value)">
+            </div>
+            <div class="multiselect-options" id="parent-project-options"></div>
+          </div>
+        </div>
+
+        <div class="multiselect" id="project-filter" data-name="Projects" data-default="All Projects">
+          <button type="button" class="multiselect-btn" onclick="toggleDropdown('project-filter')">
+            <span class="multiselect-label">All Projects</span>
+            <span class="multiselect-arrow">▾</span>
+          </button>
+          <div class="multiselect-menu">
+            <div class="multiselect-actions">
+              <button type="button" class="multiselect-action-btn" onclick="selectAllOptions('project-filter')">All</button>
+              <button type="button" class="multiselect-action-btn" onclick="clearAllOptions('project-filter')">Clear</button>
+            </div>
+            <div class="multiselect-search-wrap">
+              <input type="text" class="multiselect-search" placeholder="Search projects..." oninput="filterDropdownOptions('project-filter', this.value)">
+            </div>
+            <div class="multiselect-options" id="project-options"></div>
+          </div>
+        </div>
+
+        <div class="multiselect" id="priority-filter" data-name="Priorities" data-default="All Priorities">
+          <button type="button" class="multiselect-btn" onclick="toggleDropdown('priority-filter')">
+            <span class="multiselect-label">All Priorities</span>
+            <span class="multiselect-arrow">▾</span>
+          </button>
+          <div class="multiselect-menu">
+            <div class="multiselect-actions">
+              <button type="button" class="multiselect-action-btn" onclick="selectAllOptions('priority-filter')">All</button>
+              <button type="button" class="multiselect-action-btn" onclick="clearAllOptions('priority-filter')">Clear</button>
+            </div>
+            <div class="multiselect-options">
+              <label class="multiselect-option"><input type="checkbox" value="p1" onchange="onPriorityChange()"><span class="multiselect-opt-text">P1 (Urgent)</span></label>
+              <label class="multiselect-option"><input type="checkbox" value="p2" onchange="onPriorityChange()"><span class="multiselect-opt-text">P2 (High)</span></label>
+              <label class="multiselect-option"><input type="checkbox" value="p3" onchange="onPriorityChange()"><span class="multiselect-opt-text">P3 (Medium)</span></label>
+              <label class="multiselect-option"><input type="checkbox" value="p4" onchange="onPriorityChange()"><span class="multiselect-opt-text">P4 (Normal)</span></label>
+            </div>
+          </div>
+        </div>
+
+        <div class="multiselect" id="due-filter" data-name="Due Statuses" data-default="All Due Statuses">
+          <button type="button" class="multiselect-btn" onclick="toggleDropdown('due-filter')">
+            <span class="multiselect-label">All Due Statuses</span>
+            <span class="multiselect-arrow">▾</span>
+          </button>
+          <div class="multiselect-menu">
+            <div class="multiselect-actions">
+              <button type="button" class="multiselect-action-btn" onclick="selectAllOptions('due-filter')">All</button>
+              <button type="button" class="multiselect-action-btn" onclick="clearAllOptions('due-filter')">Clear</button>
+            </div>
+            <div class="multiselect-options">
+              <label class="multiselect-option"><input type="checkbox" value="overdue" onchange="onDueChange()"><span class="multiselect-opt-text">Overdue</span></label>
+              <label class="multiselect-option"><input type="checkbox" value="on_time" onchange="onDueChange()"><span class="multiselect-opt-text">On Time</span></label>
+              <label class="multiselect-option"><input type="checkbox" value="early" onchange="onDueChange()"><span class="multiselect-opt-text">Early</span></label>
+              <label class="multiselect-option"><input type="checkbox" value="undated" onchange="onDueChange()"><span class="multiselect-opt-text">Undated</span></label>
+            </div>
+          </div>
+        </div>
         <button class="btn" onclick="resetFilters()">Reset Filters</button>
       </div>
 
@@ -1529,107 +1780,332 @@ def generate_html(
       return 'others';
     }}
 
-    // Cascading Filter Dropdowns Initialization & Synchronization
-    function updateProjectDropdowns() {{
-      const cat = document.getElementById('category-filter') ? document.getElementById('category-filter').value : 'all';
-      const parentSelect = document.getElementById('parent-project-filter');
-      const projSelect = document.getElementById('project-filter');
-      if (!parentSelect || !projSelect) return;
+    // Multiselect Dropdown Controller
+    let openDropdownId = null;
 
-      const currentParent = parentSelect.value;
-      const currentProj = projSelect.value;
-
-      // 1. Records matching current category
-      const catRecords = rawRecords.filter(r => {{
-        if (cat === 'all') return true;
-        const recCat = getRecordCategory(r);
-        if (cat === 'others' || cat === 'archives' || cat === 'archived') {{
-          return recCat === 'others';
+    function toggleDropdown(id) {{
+      if (openDropdownId === id) {{
+        closeAllDropdowns();
+      }} else {{
+        closeAllDropdowns();
+        const el = document.getElementById(id);
+        if (el) {{
+          el.classList.add('open');
+          openDropdownId = id;
+          const menu = el.querySelector('.multiselect-menu');
+          if (menu) {{
+            const rect = menu.getBoundingClientRect();
+            if (rect.right > window.innerWidth - 10) {{
+              menu.style.left = 'auto';
+              menu.style.right = '0';
+            }} else {{
+              menu.style.left = '0';
+              menu.style.right = 'auto';
+            }}
+          }}
+          const searchInput = el.querySelector('.multiselect-search');
+          if (searchInput) {{
+            searchInput.value = '';
+            filterDropdownOptions(id, '');
+            setTimeout(() => searchInput.focus(), 50);
+          }}
         }}
-        return recCat === cat.toLowerCase();
+      }}
+    }}
+
+    function closeAllDropdowns() {{
+      document.querySelectorAll('.multiselect.open').forEach(el => {{
+        el.classList.remove('open');
+      }});
+      openDropdownId = null;
+    }}
+
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {{
+      document.addEventListener('click', (e) => {{
+        if (!e.target || !e.target.closest || !e.target.closest('.multiselect')) {{
+          closeAllDropdowns();
+        }}
+      }});
+      document.addEventListener('keydown', (e) => {{
+        if (e.key === 'Escape') {{
+          closeAllDropdowns();
+        }}
+      }});
+    }} else if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {{
+      window.addEventListener('click', (e) => {{
+        if (!e.target || !e.target.closest || !e.target.closest('.multiselect')) {{
+          closeAllDropdowns();
+        }}
+      }});
+      window.addEventListener('keydown', (e) => {{
+        if (e.key === 'Escape') {{
+          closeAllDropdowns();
+        }}
+      }});
+    }}
+
+    function getSelectedValues(id) {{
+      const container = document.getElementById(id);
+      if (!container) return [];
+      const checked = container.querySelectorAll('.multiselect-options input[type="checkbox"]:checked');
+      return Array.from(checked).map(cb => cb.value);
+    }}
+
+    function updateMultiselectButton(id) {{
+      const container = document.getElementById(id);
+      if (!container) return;
+      const labelEl = container.querySelector('.multiselect-label');
+      const btn = container.querySelector('.multiselect-btn');
+      if (!labelEl) return;
+      const defaultLabel = container.getAttribute('data-default') || 'All';
+      const name = container.getAttribute('data-name') || 'Items';
+      const allCbs = Array.from(container.querySelectorAll('.multiselect-options input[type="checkbox"]'));
+      const checkedCbs = allCbs.filter(cb => cb.checked);
+
+      let displayText = defaultLabel;
+      if (checkedCbs.length === 0 || (allCbs.length > 0 && checkedCbs.length === allCbs.length)) {{
+        displayText = defaultLabel;
+      }} else if (checkedCbs.length === 1) {{
+        const textSpan = checkedCbs[0].closest('.multiselect-option').querySelector('.multiselect-opt-text');
+        displayText = textSpan ? textSpan.textContent.trim() : checkedCbs[0].value;
+      }} else {{
+        displayText = `${{name}} (${{checkedCbs.length}})`;
+      }}
+      labelEl.textContent = displayText;
+      if (btn) btn.title = displayText;
+    }}
+
+    function selectAllOptions(id) {{
+      const container = document.getElementById(id);
+      if (!container) return;
+      const searchInput = container.querySelector('.multiselect-search');
+      const hasSearch = searchInput && searchInput.value.trim().length > 0;
+      const options = container.querySelectorAll('.multiselect-options .multiselect-option');
+      options.forEach(opt => {{
+        if (!hasSearch || opt.style.display !== 'none') {{
+          const cb = opt.querySelector('input[type="checkbox"]');
+          if (cb) cb.checked = true;
+        }}
+      }});
+      updateMultiselectButton(id);
+      handleMultiselectChange(id);
+    }}
+
+    function clearAllOptions(id) {{
+      const container = document.getElementById(id);
+      if (!container) return;
+      const options = container.querySelectorAll('.multiselect-options .multiselect-option');
+      options.forEach(opt => {{
+        const cb = opt.querySelector('input[type="checkbox"]');
+        if (cb) cb.checked = false;
+      }});
+      updateMultiselectButton(id);
+      handleMultiselectChange(id);
+    }}
+
+    function filterDropdownOptions(id, query) {{
+      const container = document.getElementById(id);
+      if (!container) return;
+      const q = (query || '').toLowerCase().trim();
+      const options = container.querySelectorAll('.multiselect-options .multiselect-option');
+      let visibleCount = 0;
+      options.forEach(opt => {{
+        const textSpan = opt.querySelector('.multiselect-opt-text');
+        const text = (textSpan ? textSpan.textContent : '').toLowerCase();
+        if (!q || text.includes(q)) {{
+          opt.style.display = 'flex';
+          visibleCount++;
+        }} else {{
+          opt.style.display = 'none';
+        }}
+      }});
+      let emptyEl = container.querySelector('.multiselect-search-empty');
+      if (visibleCount === 0 && options.length > 0) {{
+        if (!emptyEl) {{
+          emptyEl = document.createElement('div');
+          emptyEl.className = 'multiselect-empty multiselect-search-empty';
+          emptyEl.textContent = 'No matching items';
+          container.querySelector('.multiselect-options').appendChild(emptyEl);
+        }}
+        emptyEl.style.display = 'block';
+      }} else if (emptyEl) {{
+        emptyEl.style.display = 'none';
+      }}
+    }}
+
+    function handleMultiselectChange(id) {{
+      if (id === 'category-filter') {{
+        onCategoryChange();
+      }} else if (id === 'parent-project-filter') {{
+        onParentProjectChange();
+      }} else if (id === 'project-filter') {{
+        onProjectChange();
+      }} else if (id === 'priority-filter') {{
+        onPriorityChange();
+      }} else if (id === 'due-filter') {{
+        onDueChange();
+      }}
+    }}
+
+    // Cascading Multiselect Dropdowns Synchronization
+    function updateProjectDropdowns(onlyProjects = false) {{
+      const selectedCats = getSelectedValues('category-filter');
+      const allCatCbs = document.querySelectorAll('#category-filter .multiselect-options input[type="checkbox"]');
+      const isAllCats = (selectedCats.length === 0 || selectedCats.length === allCatCbs.length);
+
+      // 1. Records matching current category selection
+      const catRecords = rawRecords.filter(r => {{
+        if (isAllCats) return true;
+        const recCat = getRecordCategory(r);
+        return selectedCats.includes(recCat);
       }});
 
-      // 2. Unique parent projects for this category
-      const parentProjects = [...new Set(catRecords.map(r => r.top_level_project).filter(Boolean))].sort();
+      if (!onlyProjects) {{
+        // 2. Unique parent projects for this category selection
+        const parentProjects = [...new Set(catRecords.map(r => r.top_level_project).filter(Boolean))].sort();
+        const prevCheckedParents = new Set(getSelectedValues('parent-project-filter'));
+        const parentOptsContainer = document.getElementById('parent-project-options');
 
-      let parentOpts = '<option value="all">All Parent Projects</option>';
-      parentProjects.forEach(p => {{
-        const isSel = p === currentParent ? ' selected' : '';
-        parentOpts += `<option value="${{escapeHtml(p)}}"${{isSel}}>${{escapeHtml(p)}}</option>`;
-      }});
-      parentSelect.innerHTML = parentOpts;
+        if (parentOptsContainer) {{
+          if (parentProjects.length === 0) {{
+            parentOptsContainer.innerHTML = '<div class="multiselect-empty">No parent projects</div>';
+          }} else {{
+            let parentHtml = '';
+            parentProjects.forEach(p => {{
+              const isChecked = prevCheckedParents.has(p) ? 'checked' : '';
+              parentHtml += `<label class="multiselect-option"><input type="checkbox" value="${{escapeHtml(p)}}" ${{isChecked}} onchange="onParentProjectChange()"><span class="multiselect-opt-text">${{escapeHtml(p)}}</span></label>`;
+            }});
+            parentOptsContainer.innerHTML = parentHtml;
+          }}
+          updateMultiselectButton('parent-project-filter');
+        }}
+      }}
 
-      // 3. Filter for active parent project if selected
-      const activeParent = parentSelect.value;
+      // 3. Filter for active parent projects if selected
+      const selectedParents = getSelectedValues('parent-project-filter');
+      const allParentCbs = document.querySelectorAll('#parent-project-filter .multiselect-options input[type="checkbox"]');
+      const isAllParents = (selectedParents.length === 0 || selectedParents.length === allParentCbs.length);
+
       const parentFiltered = catRecords.filter(r => {{
-        if (activeParent === 'all') return true;
-        return r.top_level_project === activeParent;
+        if (isAllParents) return true;
+        return selectedParents.includes(r.top_level_project);
       }});
 
       // 4. Unique specific projects
       const specificProjects = [...new Set(parentFiltered.map(r => getRecordProject(r)).filter(Boolean))].sort();
+      const prevCheckedProjects = new Set(getSelectedValues('project-filter'));
+      const projOptsContainer = document.getElementById('project-options');
 
-      let projOpts = '<option value="all">All Projects</option>';
-      specificProjects.forEach(p => {{
-        const isSel = p === currentProj ? ' selected' : '';
-        projOpts += `<option value="${{escapeHtml(p)}}"${{isSel}}>${{escapeHtml(p)}}</option>`;
-      }});
-      projSelect.innerHTML = projOpts;
+      if (projOptsContainer) {{
+        if (specificProjects.length === 0) {{
+          projOptsContainer.innerHTML = '<div class="multiselect-empty">No projects</div>';
+        }} else {{
+          let projHtml = '';
+          specificProjects.forEach(p => {{
+            const isChecked = prevCheckedProjects.has(p) ? 'checked' : '';
+            projHtml += `<label class="multiselect-option"><input type="checkbox" value="${{escapeHtml(p)}}" ${{isChecked}} onchange="onProjectChange()"><span class="multiselect-opt-text">${{escapeHtml(p)}}</span></label>`;
+          }});
+          projOptsContainer.innerHTML = projHtml;
+        }}
+        updateMultiselectButton('project-filter');
+      }}
     }}
 
     function initFilterDropdowns() {{
       updateProjectDropdowns();
+      ['category-filter', 'parent-project-filter', 'project-filter', 'priority-filter', 'due-filter'].forEach(id => {{
+        updateMultiselectButton(id);
+      }});
     }}
 
     function onCategoryChange() {{
-      const parentSelect = document.getElementById('parent-project-filter');
-      const projSelect = document.getElementById('project-filter');
-      if (parentSelect) parentSelect.value = 'all';
-      if (projSelect) projSelect.value = 'all';
+      updateMultiselectButton('category-filter');
       updateProjectDropdowns();
       applyFilters();
     }}
 
     function onParentProjectChange() {{
-      const projSelect = document.getElementById('project-filter');
-      if (projSelect) projSelect.value = 'all';
-      updateProjectDropdowns();
+      updateMultiselectButton('parent-project-filter');
+      updateProjectDropdowns(true);
+      applyFilters();
+    }}
+
+    function onProjectChange() {{
+      updateMultiselectButton('project-filter');
+      applyFilters();
+    }}
+
+    function onPriorityChange() {{
+      updateMultiselectButton('priority-filter');
+      applyFilters();
+    }}
+
+    function onDueChange() {{
+      updateMultiselectButton('due-filter');
       applyFilters();
     }}
 
     // Apply Active Filters
     function applyFilters() {{
       const query = (document.getElementById('search-box').value || '').toLowerCase().trim();
-      const cat = document.getElementById('category-filter').value;
-      const parentProj = document.getElementById('parent-project-filter') ? document.getElementById('parent-project-filter').value : 'all';
-      const proj = document.getElementById('project-filter').value;
-      const prio = document.getElementById('priority-filter').value;
-      const due = document.getElementById('due-filter').value;
+      const selectedCats = getSelectedValues('category-filter');
+      const selectedParents = getSelectedValues('parent-project-filter');
+      const selectedProjs = getSelectedValues('project-filter');
+      const selectedPrios = getSelectedValues('priority-filter');
+      const selectedDues = getSelectedValues('due-filter');
       const dateFrom = document.getElementById('date-from') ? document.getElementById('date-from').value : '';
       const dateTo = document.getElementById('date-to') ? document.getElementById('date-to').value : '';
 
+      const allCatCbs = document.querySelectorAll('#category-filter .multiselect-options input[type="checkbox"]');
+      const isAllCats = (selectedCats.length === 0 || selectedCats.length === allCatCbs.length);
+
+      const allParentCbs = document.querySelectorAll('#parent-project-filter .multiselect-options input[type="checkbox"]');
+      const isAllParents = (selectedParents.length === 0 || selectedParents.length === allParentCbs.length);
+
+      const allProjCbs = document.querySelectorAll('#project-filter .multiselect-options input[type="checkbox"]');
+      const isAllProjs = (selectedProjs.length === 0 || selectedProjs.length === allProjCbs.length);
+
+      const allPrioCbs = document.querySelectorAll('#priority-filter .multiselect-options input[type="checkbox"]');
+      const isAllPrios = (selectedPrios.length === 0 || selectedPrios.length === allPrioCbs.length);
+
+      const allDueCbs = document.querySelectorAll('#due-filter .multiselect-options input[type="checkbox"]');
+      const isAllDues = (selectedDues.length === 0 || selectedDues.length === allDueCbs.length);
+
+      const catSet = new Set(selectedCats.map(c => c.toLowerCase()));
+      const parentSet = new Set(selectedParents);
+      const projSet = new Set(selectedProjs);
+      const prioSet = new Set(selectedPrios.map(p => p.toLowerCase()));
+      const dueSet = new Set(selectedDues.map(d => d.toLowerCase()));
+
       filteredRecords = rawRecords.filter(r => {{
         // Category check
-        if (cat !== 'all') {{
+        if (!isAllCats) {{
           const recCat = getRecordCategory(r);
-          if (cat === 'others' || cat === 'archives' || cat === 'archived') {{
-            if (recCat !== 'others') return false;
-          }} else {{
-            if (recCat !== cat.toLowerCase()) return false;
-          }}
+          if (!catSet.has(recCat)) return false;
         }}
 
         // Parent Project check
-        if (parentProj !== 'all' && r.top_level_project !== parentProj) return false;
+        if (!isAllParents) {{
+          if (!parentSet.has(r.top_level_project)) return false;
+        }}
 
         // Specific Project check
-        if (proj !== 'all' && getRecordProject(r) !== proj) return false;
+        if (!isAllProjs) {{
+          const p = getRecordProject(r);
+          if (!projSet.has(p)) return false;
+        }}
 
         // Priority check
-        if (prio !== 'all' && (r.priority || '').toLowerCase() !== prio) return false;
+        if (!isAllPrios) {{
+          const prio = (r.priority || '').toLowerCase();
+          if (!prioSet.has(prio)) return false;
+        }}
 
         // Due check
-        if (due !== 'all' && (r.due_status || '') !== due) return false;
+        if (!isAllDues) {{
+          const due = (r.due_status || 'undated').toLowerCase();
+          if (!dueSet.has(due)) return false;
+        }}
 
         // Day click check
         if (activeDayFilter && r.date !== activeDayFilter) return false;
@@ -1680,18 +2156,23 @@ def generate_html(
 
     function resetFilters() {{
       document.getElementById('search-box').value = '';
-      document.getElementById('category-filter').value = 'all';
-      const parentSelect = document.getElementById('parent-project-filter');
-      if (parentSelect) parentSelect.value = 'all';
-      document.getElementById('project-filter').value = 'all';
-      document.getElementById('priority-filter').value = 'all';
-      document.getElementById('due-filter').value = 'all';
       const dateFrom = document.getElementById('date-from');
       const dateTo = document.getElementById('date-to');
       if (dateFrom) dateFrom.value = '';
       if (dateTo) dateTo.value = '';
       updatePresetPills('all');
       activeDayFilter = null;
+
+      ['category-filter', 'parent-project-filter', 'project-filter', 'priority-filter', 'due-filter'].forEach(id => {{
+        const container = document.getElementById(id);
+        if (container) {{
+          container.querySelectorAll('.multiselect-options input[type="checkbox"]').forEach(cb => {{
+            cb.checked = false;
+          }});
+          updateMultiselectButton(id);
+        }}
+      }});
+
       updateProjectDropdowns();
       applyFilters();
     }}
@@ -2463,22 +2944,38 @@ def generate_html(
     }}
 
     function filterByProject(proj) {{
-      const projSelect = document.getElementById('project-filter');
-      if (projSelect) {{
-        let exists = false;
-        for (let i = 0; i < projSelect.options.length; i++) {{
-          if (projSelect.options[i].value === proj) {{
-            exists = true;
-            break;
+      ['category-filter', 'parent-project-filter'].forEach(id => {{
+        const container = document.getElementById(id);
+        if (container) {{
+          container.querySelectorAll('.multiselect-options input[type="checkbox"]').forEach(cb => {{
+            cb.checked = false;
+          }});
+          updateMultiselectButton(id);
+        }}
+      }});
+      updateProjectDropdowns();
+
+      const projContainer = document.getElementById('project-filter');
+      if (projContainer) {{
+        let found = false;
+        projContainer.querySelectorAll('.multiselect-options input[type="checkbox"]').forEach(cb => {{
+          if (cb.value === proj) {{
+            cb.checked = true;
+            found = true;
+          }} else {{
+            cb.checked = false;
+          }}
+        }});
+        if (!found) {{
+          const optDiv = projContainer.querySelector('.multiselect-options');
+          if (optDiv) {{
+            const lbl = document.createElement('label');
+            lbl.className = 'multiselect-option';
+            lbl.innerHTML = `<input type="checkbox" value="${{escapeHtml(proj)}}" checked onchange="onProjectChange()"><span class="multiselect-opt-text">${{escapeHtml(proj)}}</span>`;
+            optDiv.prepend(lbl);
           }}
         }}
-        if (!exists) {{
-          const opt = document.createElement('option');
-          opt.value = proj;
-          opt.textContent = proj;
-          projSelect.appendChild(opt);
-        }}
-        projSelect.value = proj;
+        updateMultiselectButton('project-filter');
       }}
       applyFilters();
     }}

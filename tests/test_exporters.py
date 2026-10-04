@@ -627,7 +627,8 @@ global.window = { addEventListener: () => {}, matchMedia: () => ({ matches: true
 global.document = {
   documentElement: { setAttribute: () => {}, getAttribute: () => "dark" },
   getElementById: () => ({ textContent: "[]", innerHTML: "", value: "all", classList: { add: () => {}, remove: () => {}, toggle: () => {} } }),
-  querySelectorAll: () => []
+  querySelectorAll: () => [],
+  addEventListener: () => {}
 };
 global.localStorage = { getItem: () => null, setItem: () => {} };
 """
@@ -869,8 +870,10 @@ if (cardP4.includes("badge-p4") || cardP4.includes("P4")) {
         }
         html_out = generate_html(records, categories_config=custom_cfg)
 
-        assert '<option value="consulting">Consulting</option>' in html_out
-        assert '<option value="others">Others (Unassigned)</option>' in html_out
+        assert 'value="consulting"' in html_out
+        assert "Consulting" in html_out
+        assert 'value="others"' in html_out
+        assert "Others (Unassigned)" in html_out
         assert '"custom-work*"' in html_out
         assert "getRecordCategory" in html_out
 
@@ -914,6 +917,185 @@ if (cardP4.includes("badge-p4") || cardP4.includes("P4")) {
         assert ".badge-date" in html_out
         assert "badge-date" in html_out
         assert "showDate" in html_out
+
+    def test_generate_html_multiselect_filter_controls(self):
+        """Verify presence and markup structure of all 5 multiselect filter popovers."""
+        from todoist_trace.exporters import generate_html
+
+        records = [
+            {
+                "top_level_project": "alpha-platform",
+                "project_path": "gateway",
+                "project_levels": ["gateway"],
+                "section": "sprint-1",
+                "date": "2026-10-02",
+                "time": "11:00:00",
+                "task_path": "Implement rate limiting",
+                "task_levels": ["Implement rate limiting"],
+                "priority": "p1",
+                "due_status": "overdue",
+            },
+            {
+                "top_level_project": "home-tasks",
+                "project_path": "garden",
+                "project_levels": ["garden"],
+                "section": "",
+                "date": "2026-10-02",
+                "time": "15:00:00",
+                "task_path": "Water seedlings",
+                "task_levels": ["Water seedlings"],
+                "priority": "p3",
+                "due_status": "on_time",
+            },
+        ]
+        html_out = generate_html(records, title="Multiselect Controls Test")
+
+        # 1. Five multiselect containers with proper metadata
+        assert 'id="category-filter"' in html_out
+        assert 'data-name="Categories"' in html_out
+        assert 'data-default="All Categories"' in html_out
+
+        assert 'id="parent-project-filter"' in html_out
+        assert 'data-name="Parent Projects"' in html_out
+        assert 'data-default="All Parent Projects"' in html_out
+
+        assert 'id="project-filter"' in html_out
+        assert 'data-name="Projects"' in html_out
+        assert 'data-default="All Projects"' in html_out
+
+        assert 'id="priority-filter"' in html_out
+        assert 'data-name="Priorities"' in html_out
+        assert 'data-default="All Priorities"' in html_out
+
+        assert 'id="due-filter"' in html_out
+        assert 'data-name="Due Statuses"' in html_out
+        assert 'data-default="All Due Statuses"' in html_out
+
+        # 2. Action buttons (All & Clear)
+        assert "selectAllOptions('category-filter')" in html_out
+        assert "clearAllOptions('category-filter')" in html_out
+        assert "selectAllOptions('parent-project-filter')" in html_out
+        assert "clearAllOptions('parent-project-filter')" in html_out
+        assert "selectAllOptions('project-filter')" in html_out
+        assert "clearAllOptions('project-filter')" in html_out
+        assert "selectAllOptions('priority-filter')" in html_out
+        assert "clearAllOptions('priority-filter')" in html_out
+        assert "selectAllOptions('due-filter')" in html_out
+        assert "clearAllOptions('due-filter')" in html_out
+
+        # 3. Live search filter inputs for parent projects and projects
+        assert "filterDropdownOptions('parent-project-filter', this.value)" in html_out
+        assert "filterDropdownOptions('project-filter', this.value)" in html_out
+
+        # 4. Priority options
+        assert 'value="p1"' in html_out
+        assert 'value="p2"' in html_out
+        assert 'value="p3"' in html_out
+        assert 'value="p4"' in html_out
+        assert "P1 (Urgent)" in html_out
+        assert "P4 (Normal)" in html_out
+
+        # 5. Due status options
+        assert 'value="overdue"' in html_out
+        assert 'value="on_time"' in html_out
+        assert 'value="early"' in html_out
+        assert 'value="undated"' in html_out
+        assert "Overdue" in html_out
+        assert "On Time" in html_out
+        assert "Undated" in html_out
+
+        # 6. CSS classes
+        assert ".multiselect {" in html_out
+        assert ".multiselect-btn {" in html_out
+        assert ".multiselect-menu {" in html_out
+        assert ".multiselect-option {" in html_out
+
+    def test_generate_html_multiselect_js_controller_and_cascading(self):
+        """Verify JavaScript engine functions for multiselect, cascading, and filter evaluation."""
+        from todoist_trace.exporters import generate_html
+
+        records = [
+            {
+                "top_level_project": "corp-services",
+                "project_path": "auth-api",
+                "project_levels": ["auth-api"],
+                "date": "2026-10-02",
+                "time": "10:00:00",
+                "task_path": "Rotate token secret",
+                "task_levels": ["Rotate token secret"],
+                "priority": "p1",
+                "due_status": "early",
+            }
+        ]
+        html_out = generate_html(records, title="Multiselect JS Test")
+
+        # Controller functions
+        assert "toggleDropdown" in html_out
+        assert "closeAllDropdowns" in html_out
+        assert "getSelectedValues" in html_out
+        assert "updateMultiselectButton" in html_out
+        assert "selectAllOptions" in html_out
+        assert "clearAllOptions" in html_out
+        assert "filterDropdownOptions" in html_out
+        assert "handleMultiselectChange" in html_out
+
+        # Cascading and event handlers
+        assert "updateProjectDropdowns" in html_out
+        assert "onCategoryChange" in html_out
+        assert "onParentProjectChange" in html_out
+        assert "onProjectChange" in html_out
+        assert "onPriorityChange" in html_out
+        assert "onDueChange" in html_out
+
+        # Filter and reset logic
+        assert "applyFilters" in html_out
+        assert "resetFilters" in html_out
+        assert "filterByProject" in html_out
+
+        # Node.js syntax and functional execution check if available
+        import shutil
+        import subprocess
+        import tempfile
+        import re
+
+        node_bin = shutil.which("node")
+        if node_bin:
+            scripts = re.findall(
+                r"<script(?![^>]*type=\"application/json\")>(.*?)</script>",
+                html_out,
+                re.DOTALL,
+            )
+            assert len(scripts) >= 1
+            test_js = (
+                """
+global.window = { addEventListener: () => {}, matchMedia: () => ({ matches: true }) };
+global.document = {
+  documentElement: { setAttribute: () => {}, getAttribute: () => "dark" },
+  getElementById: () => ({ textContent: "", innerHTML: "", value: "all", classList: { add: () => {}, remove: () => {}, toggle: () => {} } }),
+  querySelectorAll: () => [],
+  addEventListener: () => {}
+};
+global.localStorage = { getItem: () => null, setItem: () => {} };
+"""
+                + scripts[0]
+                + """
+if (typeof toggleDropdown !== 'function') throw new Error('toggleDropdown missing');
+if (typeof getSelectedValues !== 'function') throw new Error('getSelectedValues missing');
+if (typeof updateMultiselectButton !== 'function') throw new Error('updateMultiselectButton missing');
+if (typeof selectAllOptions !== 'function') throw new Error('selectAllOptions missing');
+if (typeof clearAllOptions !== 'function') throw new Error('clearAllOptions missing');
+if (typeof filterDropdownOptions !== 'function') throw new Error('filterDropdownOptions missing');
+if (typeof updateProjectDropdowns !== 'function') throw new Error('updateProjectDropdowns missing');
+if (typeof applyFilters !== 'function') throw new Error('applyFilters missing');
+if (typeof resetFilters !== 'function') throw new Error('resetFilters missing');
+if (typeof filterByProject !== 'function') throw new Error('filterByProject missing');
+"""
+            )
+            with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+                f.write(test_js)
+                fpath = f.name
+            proc = subprocess.run([node_bin, fpath], capture_output=True, text=True)
+            assert proc.returncode == 0, f"Node.js check failed: {proc.stderr}"
 
 
 
