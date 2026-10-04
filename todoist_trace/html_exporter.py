@@ -2064,9 +2064,6 @@ def generate_html(
           calHover = null;
           if (dateTo) dateTo.value = calEnd;
           renderCalendar();
-          setTimeout(() => {{
-            applyCustomDateRange();
-          }}, 180);
         }}
       }}
     }}
@@ -2119,7 +2116,7 @@ def generate_html(
       if (!preview) return;
 
       if (calStart && calEnd) {{
-        preview.textContent = `${{calStart}} → ${{calEnd}}`;
+        preview.textContent = `${{calStart}} → ${{calEnd}} (Click Apply)`;
       }} else if (calStart && calHover && calHover >= calStart) {{
         preview.textContent = `${{calStart}} → ${{calHover}} (click to set)`;
       }} else if (calStart) {{
