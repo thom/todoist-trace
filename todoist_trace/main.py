@@ -103,7 +103,8 @@ def run_sync(settings: Dict[str, Any], reporter: FancyProgressReporter, cache: A
     refresh = settings.get("refresh", False)
 
     # 1. Fetch or load projects
-    if cache.enabled and cache.projects and not refresh:
+    has_projects = cache.has_projects_cached() if hasattr(cache, "has_projects_cached") else bool(cache.projects)
+    if cache.enabled and has_projects and not refresh:
         reporter.start_projects(cached=True, count=len(cache.projects))
         projects = cache.projects
     else:

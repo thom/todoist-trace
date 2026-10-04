@@ -430,6 +430,15 @@ class SQLiteTraceCache:
         for row in cur.fetchall():
             self._tasks[row[0]] = json.loads(row[1])
 
+    def has_projects_cached(self) -> bool:
+        """Return True if projects table in database has stored records."""
+        if not self.conn:
+            return False
+        cur = self.conn.cursor()
+        cur.execute("SELECT count(*) FROM projects")
+        row = cur.fetchone()
+        return bool(row and row[0] > 0)
+
     @property
     def projects(self) -> List[Dict[str, Any]]:
         return self._projects
