@@ -82,3 +82,15 @@ class TestModularPackageStructure:
         assert callable(ProjectTreeResolver)
         assert callable(SectionResolver)
         assert callable(TaskHierarchyResolver)
+
+    def test_pyproject_scripts_entrypoints(self):
+        import tomllib
+        from pathlib import Path
+        pyproject_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        assert pyproject_path.is_file(), "pyproject.toml must exist at repo root"
+        with open(pyproject_path, "rb") as f:
+            data = tomllib.load(f)
+        scripts = data.get("project", {}).get("scripts", {})
+        assert scripts.get("todoist-trace") == "todoist_trace.main:main"
+        assert scripts.get("todoist_trace") == "todoist_trace.main:main"
+

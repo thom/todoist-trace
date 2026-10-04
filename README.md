@@ -52,7 +52,7 @@ todoist-trace/
 │   ├── main.py                 # Pipeline execution and orchestration
 │   ├── progress.py             # Visual terminal progress reporter, day tracking, ETA
 │   └── resolvers.py            # Recursive project tree, section, and task hierarchy resolvers
-├── tests/                      # Modular test suite (177 tests)
+├── tests/                      # Modular test suite (178 tests)
 │   ├── conftest.py             # Shared fixtures and path configuration
 │   ├── test_api.py             # Read-only REST API client and section endpoint tests
 │   ├── test_cache.py           # SQLite, interval arithmetic, and materialized cache tests
@@ -62,6 +62,7 @@ todoist-trace/
 │   ├── test_package.py         # Submodule and public export tests
 │   ├── test_progress.py        # Progress bars, day percentage, and ETA tests
 │   └── test_resolvers.py       # Project, section, and task tree resolution tests
+├── pyproject.toml              # PEP 517/621 build configuration and CLI entrypoints
 ├── pytest.ini                  # Pytest configuration
 ├── AGENTS.md                   # Repository conventions and guidelines
 ├── LICENSE                     # MIT License
@@ -77,18 +78,26 @@ todoist-trace/
 - Python 3.10+
 - `pip`
 
-### Setup
+### Installation Methods
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/thom/todoist-trace.git
-   cd todoist-trace
-   ```
+#### Option A: Isolated Global CLI Install with `pipx` (Recommended)
+Installs `todoist-trace` globally into `~/.local/bin/` within an isolated environment:
+```bash
+pipx install .
+```
 
-2. Install dependencies:
-   ```bash
-   pip install requests pytest
-   ```
+#### Option B: Editable Development Install with `pip`
+Installs `todoist-trace` in editable mode so changes to the source code take effect immediately:
+```bash
+pip install -e .
+```
+
+#### Option C: Standard `pip` Install
+```bash
+pip install .
+```
+
+Once installed, both `todoist-trace` and `todoist_trace` can be invoked directly from anywhere in your shell.
 
 ---
 
