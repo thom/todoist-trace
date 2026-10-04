@@ -872,8 +872,7 @@ def generate_html(
       color: var(--text-muted);
     }}
 
-    .filter-date-input-sm,
-    .filter-date-input {{
+    .filter-date-input-sm {{
       padding: 4px 6px;
       font-size: 11px;
       font-family: inherit;
@@ -887,14 +886,12 @@ def generate_html(
       width: 120px;
     }}
 
-    :root[data-theme="light"] .filter-date-input-sm,
-    :root[data-theme="light"] .filter-date-input {{
+    :root[data-theme="light"] .filter-date-input-sm {{
       color-scheme: light;
       background-color: #ffffff;
     }}
 
-    .filter-date-input-sm:focus,
-    .filter-date-input:focus {{
+    .filter-date-input-sm:focus {{
       border-color: var(--accent);
     }}
 
@@ -2184,7 +2181,7 @@ def generate_html(
         const prevSun = new Date(year, month, day - distToMon - 1);
         dateFrom.value = formatDateIso(prevMon);
         dateTo.value = formatDateIso(prevSun);
-      }} else if (preset === 'cur_month' || preset === 'month') {{
+      }} else if (preset === 'cur_month') {{
         const start = new Date(year, month, 1);
         const end = new Date(year, month + 1, 0);
         dateFrom.value = formatDateIso(start);
@@ -2270,10 +2267,6 @@ def generate_html(
         closeAllDropdowns();
       }}
       applyFilters();
-    }}
-
-    function onDateRangeChange() {{
-      applyCustomDateRange(false);
     }}
 
     function clearDateRange() {{

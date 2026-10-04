@@ -1,5 +1,5 @@
 """
-Unit tests for persistent caching (TraceCache, SQLiteTraceCache, and factory),
+Unit tests for persistent caching (SQLiteTraceCache and factory),
 including interval arithmetic and range-aware synchronization scenarios.
 """
 
@@ -9,7 +9,6 @@ import pytest
 
 from todoist_trace.cache import (
     SQLiteTraceCache,
-    TraceCache,
     calculate_missing_intervals,
     coalesce_intervals,
     create_cache,
@@ -218,7 +217,6 @@ class TestSQLiteTraceCache:
 
         c_json = create_cache(json_file)
         assert isinstance(c_json, SQLiteTraceCache)
-        assert isinstance(c_json, TraceCache)
         c_json.close()
 
         c_db = create_cache(db_file)

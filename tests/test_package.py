@@ -17,7 +17,6 @@ class TestModularPackageStructure:
             "SectionResolver",
             "TaskCacheDict",
             "TaskHierarchyResolver",
-            "TraceCache",
             "build_trace_records",
             "calculate_missing_intervals",
             "coalesce_intervals",
@@ -54,7 +53,6 @@ class TestModularPackageStructure:
             SQLiteTraceCache,
             SectionCacheDict,
             TaskCacheDict,
-            TraceCache,
             create_cache,
         )
         from todoist_trace.cli import parse_args, resolve_settings

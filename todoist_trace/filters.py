@@ -36,10 +36,8 @@ def filter_records(
             if cat_lower == "others":
                 if rec_cat != "others":
                     continue
-            else:
-                r_direct = (r.get("category") or "").lower()
-                if rec_cat != cat_lower and r_direct != cat_lower:
-                    continue
+            elif rec_cat != cat_lower:
+                continue
 
         # Date range check
         rec_date = r.get("date", "")

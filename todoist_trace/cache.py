@@ -866,9 +866,6 @@ class SQLiteTraceCache:
             self.conn = None
 
 
-# Alias TraceCache to SQLiteTraceCache for API compatibility
-TraceCache = SQLiteTraceCache
-
 
 def create_cache(
     cache_file: Optional[str] = None,
