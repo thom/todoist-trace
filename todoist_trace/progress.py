@@ -147,6 +147,19 @@ class FancyProgressReporter:
         self._sync_total_seconds: Optional[float] = None
         self._last_milestone_events = 0
         self._last_proj_count = 0
+        self.total_phases: Optional[int] = 4
+        self.pipeline_mode: bool = False
+
+    def set_phase_context(self, total_phases: Optional[int]) -> None:
+        """Set the number of total phases dynamically (e.g. 3 for sync, 1 for export, 4 for run)."""
+        self.total_phases = total_phases
+
+    def phase_tag(self, phase_num: int) -> str:
+        """Render phase tag like [1/3] or empty string if total_phases is not set or <= 1."""
+        if not self.total_phases or self.total_phases <= 1:
+            return ""
+        return f"{self.style.cyan(f'[{phase_num}/{self.total_phases}]')} "
+
 
     def _get_term_cols(self) -> int:
         return shutil.get_terminal_size((80, 24)).columns
@@ -232,17 +245,17 @@ class FancyProgressReporter:
             return
         if cached:
             msg = (
-                f"{self.style.cyan('[1/4]')} {self.style.green(self.CHECKMARK)} "
+                f"{self.phase_tag(1)}{self.style.green(self.CHECKMARK)} "
                 f"Projects: {self.style.bold(str(count))} cached projects loaded"
             )
             self.print_text(msg)
         elif self.is_tty:
             self._write_live_line(
-                f"{self.style.cyan('[1/4]')} {self.style.yellow(self.SPINNER_FRAMES[0])} "
+                f"{self.phase_tag(1)}{self.style.yellow(self.SPINNER_FRAMES[0])} "
                 "Connecting to Todoist API..."
             )
         else:
-            self.print_text(f"{self.style.cyan('[1/4]')} Connecting to Todoist API...")
+            self.print_text(f"{self.phase_tag(1)}Connecting to Todoist API...")
 
     def update_projects(self, active_count: int, archived_count: int = 0) -> None:
         if self.quiet:
@@ -251,7 +264,7 @@ class FancyProgressReporter:
             self.spinner_idx = (self.spinner_idx + 1) % len(self.SPINNER_FRAMES)
             sp = self.style.yellow(self.SPINNER_FRAMES[self.spinner_idx])
             line = (
-                f"{self.style.cyan('[1/4]')} {sp} Fetching projects... "
+                f"{self.phase_tag(1)}{sp} Fetching projects... "
                 f"{self.style.bold(str(active_count))} active"
                 + (f", {self.style.bold(str(archived_count))} archived" if archived_count > 0 else "")
             )
@@ -260,14 +273,17 @@ class FancyProgressReporter:
             total = active_count + archived_count
             if total - self._last_proj_count >= 100:
                 self._last_proj_count = total
-                self.print_text(f"  → Fetched {active_count} active projects...")
+                if archived_count > 0:
+                    self.print_text(f"  → Fetched {active_count} active, {archived_count} archived projects...")
+                else:
+                    self.print_text(f"  → Fetched {active_count} active projects...")
 
     def finish_projects(self, active_count: int, archived_count: int) -> None:
         if self.quiet:
             return
         total = active_count + archived_count
         final = (
-            f"{self.style.cyan('[1/4]')} {self.style.green(self.CHECKMARK)} "
+            f"{self.phase_tag(1)}{self.style.green(self.CHECKMARK)} "
             f"Projects: {self.style.bold(str(total))} retrieved "
             f"({active_count} active, {archived_count} archived)"
         )
@@ -287,7 +303,7 @@ class FancyProgressReporter:
             return
         if fully_cached:
             final = (
-                f"{self.style.cyan('[2/4]')} {self.style.green(self.CHECKMARK)} "
+                f"{self.phase_tag(2)}{self.style.green(self.CHECKMARK)} "
                 f"Sync: Date range fully cached ({self.style.bold(str(total_cache_count))} events cached). Zero API calls."
             )
             self.print_text(final)
@@ -308,7 +324,7 @@ class FancyProgressReporter:
         desc_s = start_iso[:10] if start_iso else "genesis"
         desc_e = end_iso[:10] if end_iso else "now"
         span_str = f" ({self._sync_total_days} days)" if self._sync_total_days else ""
-        header = f"{self.style.cyan('[2/4]')} Syncing activities: {desc_s} → {desc_e}{span_str}"
+        header = f"{self.phase_tag(2)}Syncing activities: {desc_s} → {desc_e}{span_str}"
         self.print_text(header)
 
     def update_sync(self, events_count: int, oldest_event_date: Optional[str] = None) -> None:
@@ -322,7 +338,7 @@ class FancyProgressReporter:
         now = time.time()
         elapsed = max(0.001, (now - self._sync_start_time) if self._sync_start_time else 0.001)
         speed = events_count / elapsed
-        speed_str = f"{int(speed)} tasks/s"
+        speed_str = f"{int(speed)} activities/s"
 
         # Calculate day-based percentage & ETA
         pct: Optional[float] = None
@@ -351,7 +367,7 @@ class FancyProgressReporter:
             cols = self._get_term_cols()
             pct_val = pct if pct is not None else 0.0
             pct_text = f"{pct_val:5.1f}%" if pct is not None else "  ---%"
-            tasks_text = f"{events_count:,} tasks"
+            tasks_text = f"{events_count:,} activities"
 
             # Dynamic bar sizing
             info_parts = [p for p in [days_str, tasks_text, speed_str, eta_str] if p]
@@ -382,10 +398,10 @@ class FancyProgressReporter:
         )
         dur_str = format_duration(dur)
         speed = int(new_events_count / max(0.001, dur)) if dur > 0 else 0
-        speed_str = f", {speed} tasks/s" if speed > 0 else ""
+        speed_str = f", {speed} activities/s" if speed > 0 else ""
 
         final = (
-            f"{self.style.cyan('[2/4]')} {self.style.green(self.CHECKMARK)} "
+            f"{self.phase_tag(2)}{self.style.green(self.CHECKMARK)} "
             f"Sync complete: {self.style.bold(f'{new_events_count:,}')} new activities synced "
             f"({total_cache_count:,} total cached) in {dur_str}{speed_str}"
         )
@@ -402,18 +418,18 @@ class FancyProgressReporter:
         self._resolve_last_milestone = 0
         if total_records == 0:
             final = (
-                f"{self.style.cyan('[3/4]')} {self.style.green(self.CHECKMARK)} "
+                f"{self.phase_tag(3)}{self.style.green(self.CHECKMARK)} "
                 "Task hierarchies: 0 records to resolve."
             )
             self.print_text(final)
             return
         if self.is_tty:
             self._write_live_line(
-                f"{self.style.cyan('[3/4]')} {self.style.yellow(self.SPINNER_FRAMES[0])} "
+                f"{self.phase_tag(3)}{self.style.yellow(self.SPINNER_FRAMES[0])} "
                 f"Resolving task hierarchies (0 / {total_records:,})..."
             )
         else:
-            self.print_text(f"{self.style.cyan('[3/4]')} Resolving task hierarchies ({total_records:,} records)...")
+            self.print_text(f"{self.phase_tag(3)}Resolving task hierarchies ({total_records:,} records)...")
 
     def update_resolve(self, current: int, total: int) -> None:
         if self.quiet or total <= 0:
@@ -445,7 +461,7 @@ class FancyProgressReporter:
         dur = max(0.001, time.time() - getattr(self, "_resolve_start_time", time.time()))
         dur_str = format_duration(dur)
         final = (
-            f"{self.style.cyan('[3/4]')} {self.style.green(self.CHECKMARK)} "
+            f"{self.phase_tag(3)}{self.style.green(self.CHECKMARK)} "
             f"Task hierarchies: {self.style.bold(f'{total:,}')} records resolved in {dur_str}"
         )
         self._end_live_line(final)
@@ -465,8 +481,9 @@ class FancyProgressReporter:
             return
         fmt_upper = out_fmt.upper()
         style_suffix = f" ({style_desc})" if style_desc else ""
+        phase = self.phase_tag(4) if self.total_phases == 4 else (self.phase_tag(1) if self.total_phases == 1 else "")
         final = (
-            f"{self.style.cyan('[4/4]')} {self.style.green(self.CHECKMARK)} "
+            f"{phase}{self.style.green(self.CHECKMARK)} "
             f"Export complete: {self.style.bold(output_path)} "
             f"({self.style.bold(f'{matched_count:,}')} of {total_count:,} records matched, {fmt_upper}{style_suffix})"
         )

@@ -723,10 +723,14 @@ def main(argv: Optional[list] = None) -> int:
     )
 
     if command == "sync":
+        reporter.set_phase_context(3)
         return run_sync(settings, reporter, cache)
     elif command == "export":
+        reporter.set_phase_context(1)
         return run_export(settings, reporter, cache)
     elif command == "run":
+        reporter.set_phase_context(4)
+        reporter.pipeline_mode = True
         rc = run_sync(settings, reporter, cache)
         if rc != 0:
             return rc

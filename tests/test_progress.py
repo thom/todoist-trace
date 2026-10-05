@@ -273,3 +273,32 @@ class TestProgressIntegration:
         # Progress callback should be called on multiples of 20 and at completion (20, 40, 50)
         assert len(calls) == 3
         assert calls[-1] == (50, 50)
+
+    def test_project_milestone_reporting_active_and_archived(self):
+        buf = io.StringIO()
+        reporter = FancyProgressReporter(quiet=False, no_color=True, stream=buf)
+
+        # 1. Fetching active projects milestones
+        reporter.update_projects(active_count=100, archived_count=0)
+        assert "Fetched 100 active projects..." in buf.getvalue()
+
+        # 2. Fetching archived projects milestones
+        buf.seek(0)
+        buf.truncate(0)
+        reporter.update_projects(active_count=100, archived_count=100)
+        assert "Fetched 100 active, 100 archived projects..." in buf.getvalue()
+
+    def test_phase_context_tags(self):
+        buf = io.StringIO()
+        reporter = FancyProgressReporter(quiet=False, no_color=True, stream=buf)
+
+        # 3 phases for sync
+        reporter.set_phase_context(3)
+        assert reporter.phase_tag(1) == "[1/3] "
+        assert reporter.phase_tag(2) == "[2/3] "
+        assert reporter.phase_tag(3) == "[3/3] "
+
+        # 1 phase for standalone export
+        reporter.set_phase_context(1)
+        assert reporter.phase_tag(1) == ""
+
