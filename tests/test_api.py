@@ -398,15 +398,9 @@ class TestPreloadTasks:
         assert args[2].startswith("2026-03-17")
 
     @patch("todoist_trace.main.fetch_archived_sections")
-    @patch("todoist_trace.main.fetch_completed_tasks_by_date")
-    @patch("todoist_trace.main.fetch_tasks")
-    def test_preload_tasks_preloads_archived_sections_for_events(
-        self, mock_active, mock_completed, mock_arch_secs
-    ):
-        from todoist_trace.main import preload_tasks
+    def test_preload_archived_sections(self, mock_arch_secs):
+        from todoist_trace.main import preload_archived_sections
 
-        mock_active.return_value = []
-        mock_completed.return_value = []
         mock_arch_secs.return_value = [
             {"id": "arch-sec-abc", "name": "Sprint Alpha", "project_id": "proj-1"}
         ]
@@ -416,7 +410,6 @@ class TestPreloadTasks:
         mock_cache.enabled = True
         mock_cache.sections = sections_dict
 
-        projects = [{"id": "proj-1", "is_archived": False}]
         events = [
             {
                 "parent_project_id": "proj-1",
@@ -425,10 +418,9 @@ class TestPreloadTasks:
             }
         ]
 
-        preload_tasks(
+        preload_archived_sections(
             token="dummy_token",
             cache=mock_cache,
-            projects=projects,
             events=events,
         )
 

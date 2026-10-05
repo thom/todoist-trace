@@ -227,31 +227,39 @@ def preload_tasks(
             except Exception:
                 continue
 
-        # 4. Preload archived sections for projects in events that reference sections
-        if hasattr(cache, "sections"):
-            pids_with_sections = set()
-            for ev in events:
-                pid = str(ev.get("parent_project_id", ""))
-                ed = ev.get("extra_data")
-                if isinstance(ed, str):
-                    if "section_id" in ed:
-                        pids_with_sections.add(pid)
-                elif isinstance(ed, dict):
-                    if ed.get("section_id"):
-                        pids_with_sections.add(pid)
-
-            for pid in pids_with_sections:
-                if not pid:
-                    continue
-                try:
-                    arch_secs = fetch_archived_sections(token, pid)
-                    for s in arch_secs:
-                        if s.get("id"):
-                            cache.sections[str(s["id"])] = s
-                except Exception:
-                    pass
-
     _flush_batch()
+
+
+def preload_archived_sections(
+    token: Optional[str],
+    cache: Any,
+    events: List[Dict[str, Any]],
+) -> None:
+    """Preload archived sections for projects referenced by activity events."""
+    if not token or not cache or not getattr(cache, "enabled", False) or not hasattr(cache, "sections"):
+        return
+
+    pids_with_sections = set()
+    for ev in events:
+        pid = str(ev.get("parent_project_id", ""))
+        ed = ev.get("extra_data")
+        if isinstance(ed, str):
+            if "section_id" in ed:
+                pids_with_sections.add(pid)
+        elif isinstance(ed, dict):
+            if ed.get("section_id"):
+                pids_with_sections.add(pid)
+
+    for pid in pids_with_sections:
+        if not pid:
+            continue
+        try:
+            arch_secs = fetch_archived_sections(token, pid)
+            for s in arch_secs:
+                if s.get("id"):
+                    cache.sections[str(s["id"])] = s
+        except Exception:
+            pass
 
 
 def run_sync(settings: Dict[str, Any], reporter: FancyProgressReporter, cache: Any) -> int:
@@ -377,6 +385,11 @@ def run_sync(settings: Dict[str, Any], reporter: FancyProgressReporter, cache: A
         req_end=req_end,
         reporter=reporter,
     )
+    preload_archived_sections(
+        token=token,
+        cache=cache,
+        events=events_to_resolve,
+    )
 
     hierarchy_store = getattr(cache, "hierarchy_store", None) if cache else None
     project_resolver = ProjectTreeResolver(projects, hierarchy_store=hierarchy_store)
@@ -438,6 +451,7 @@ def run_export(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
         token = settings.get("token")
         if token and cache.enabled and (refresh or len(cache.tasks) == 0):
             preload_tasks(token, cache, cache.projects, cache.get_all_events(), reporter=reporter)
+            preload_archived_sections(token, cache, cache.get_all_events())
 
         reporter.print_text("Materializing resolved activities in cache for fast exports...")
         all_events = cache.get_all_events()
