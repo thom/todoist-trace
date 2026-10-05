@@ -24,9 +24,12 @@ class TestModularPackageStructure:
             "export_csv",
             "export_markdown",
             "fetch_completed_activities",
+            "fetch_completed_tasks_by_date",
             "fetch_projects",
             "fetch_section",
             "fetch_sections",
+            "fetch_task",
+            "fetch_tasks",
             "filter_records",
             "format_event_datetime",
             "format_task_bullets",
@@ -36,6 +39,7 @@ class TestModularPackageStructure:
             "load_env_file",
             "main",
             "parse_args",
+            "preload_tasks",
             "resolve_settings",
             "resolve_timezone",
         ]
@@ -45,9 +49,12 @@ class TestModularPackageStructure:
     def test_direct_submodule_imports(self):
         from todoist_trace.api import (
             fetch_completed_activities,
+            fetch_completed_tasks_by_date,
             fetch_projects,
             fetch_section,
             fetch_sections,
+            fetch_task,
+            fetch_tasks,
         )
         from todoist_trace.cache import (
             SQLiteTraceCache,

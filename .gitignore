@@ -17,7 +17,7 @@ config.json
 
 # Export files and samples
 *.csv
-todoist_trace_export.*
+todoist_trace_*
 live_*
 sample_*
 

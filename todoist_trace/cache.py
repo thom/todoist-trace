@@ -181,6 +181,28 @@ class TaskCacheDict(dict):
             except Exception:
                 pass
 
+    def update(self, *args, **kwargs) -> None:
+        super().update(*args, **kwargs)
+        if self._cache and self._cache.enabled and self._cache.conn:
+            try:
+                items = dict(*args, **kwargs)
+                rows = [
+                    (
+                        str(k),
+                        str(v.get("parent_id")) if v.get("parent_id") else None,
+                        v.get("content", ""),
+                        json.dumps(v),
+                    )
+                    for k, v in items.items()
+                ]
+                with self._cache.conn:
+                    self._cache.conn.executemany(
+                        "INSERT OR REPLACE INTO tasks (id, parent_id, content, payload) VALUES (?, ?, ?, ?)",
+                        rows,
+                    )
+            except Exception:
+                pass
+
 
 class SectionCacheDict(dict):
     """Dictionary that auto-persists inserted sections to SQLite."""
@@ -206,6 +228,28 @@ class SectionCacheDict(dict):
             except Exception:
                 pass
 
+    def update(self, *args, **kwargs) -> None:
+        super().update(*args, **kwargs)
+        if self._cache and self._cache.enabled and self._cache.conn:
+            try:
+                items = dict(*args, **kwargs)
+                rows = [
+                    (
+                        str(k),
+                        str(v.get("project_id")) if v.get("project_id") else None,
+                        v.get("name", ""),
+                        json.dumps(v),
+                    )
+                    for k, v in items.items()
+                ]
+                with self._cache.conn:
+                    self._cache.conn.executemany(
+                        "INSERT OR REPLACE INTO sections (id, project_id, name, payload) VALUES (?, ?, ?, ?)",
+                        rows,
+                    )
+            except Exception:
+                pass
+
 
 class LabelCacheDict(dict):
     """Dictionary that auto-persists inserted labels to SQLite."""
@@ -227,6 +271,28 @@ class LabelCacheDict(dict):
                             value.get("color", ""),
                             json.dumps(value),
                         ),
+                    )
+            except Exception:
+                pass
+
+    def update(self, *args, **kwargs) -> None:
+        super().update(*args, **kwargs)
+        if self._cache and self._cache.enabled and self._cache.conn:
+            try:
+                items = dict(*args, **kwargs)
+                rows = [
+                    (
+                        str(k),
+                        v.get("name", ""),
+                        v.get("color", ""),
+                        json.dumps(v),
+                    )
+                    for k, v in items.items()
+                ]
+                with self._cache.conn:
+                    self._cache.conn.executemany(
+                        "INSERT OR REPLACE INTO labels (id, name, color, payload) VALUES (?, ?, ?, ?)",
+                        rows,
                     )
             except Exception:
                 pass
@@ -419,16 +485,31 @@ class SQLiteTraceCache:
         self._projects = loaded_projs
 
         cur.execute("SELECT id, payload FROM sections")
+        loaded_secs = {}
         for row in cur.fetchall():
-            self._sections[row[0]] = json.loads(row[1])
+            try:
+                loaded_secs[row[0]] = json.loads(row[1])
+            except Exception:
+                pass
+        self._sections = SectionCacheDict(self, loaded_secs)
 
         cur.execute("SELECT id, payload FROM labels")
+        loaded_lbls = {}
         for row in cur.fetchall():
-            self._labels[row[0]] = json.loads(row[1])
+            try:
+                loaded_lbls[row[0]] = json.loads(row[1])
+            except Exception:
+                pass
+        self._labels = LabelCacheDict(self, loaded_lbls)
 
         cur.execute("SELECT id, payload FROM tasks")
+        loaded_tasks = {}
         for row in cur.fetchall():
-            self._tasks[row[0]] = json.loads(row[1])
+            try:
+                loaded_tasks[row[0]] = json.loads(row[1])
+            except Exception:
+                pass
+        self._tasks = TaskCacheDict(self, loaded_tasks)
 
     def has_projects_cached(self) -> bool:
         """Return True if projects table in database has stored records."""
@@ -544,6 +625,40 @@ class SQLiteTraceCache:
     @property
     def tasks(self) -> Dict[str, Dict[str, Any]]:
         return self._tasks
+
+    @tasks.setter
+    def tasks(self, ts: Union[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]) -> None:
+        if isinstance(ts, list):
+            task_dict = {str(t.get("id")): t for t in ts if t.get("id")}
+        else:
+            task_dict = dict(ts)
+        self._tasks = TaskCacheDict(self, task_dict)
+        if not self.enabled or not self.conn:
+            return
+        with self.conn:
+            rows = [
+                (
+                    str(t.get("id", "")),
+                    str(t.get("parent_id")) if t.get("parent_id") else None,
+                    t.get("content", ""),
+                    json.dumps(t),
+                )
+                for t in task_dict.values()
+                if t.get("id")
+            ]
+            self.conn.executemany(
+                "INSERT OR REPLACE INTO tasks (id, parent_id, content, payload) VALUES (?, ?, ?, ?)",
+                rows,
+            )
+
+    def save_tasks(self, tasks: Union[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]) -> None:
+        """Batch save tasks into cache in a single transaction."""
+        if isinstance(tasks, list):
+            task_dict = {str(t.get("id")): t for t in tasks if t.get("id")}
+        else:
+            task_dict = dict(tasks)
+        self._tasks.update(task_dict)
+
 
     def get_latest_event_date(self) -> Optional[str]:
         if not self.enabled or not self.conn:

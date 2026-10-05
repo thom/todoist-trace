@@ -8,10 +8,13 @@ import requests
 
 from todoist_trace.api import (
     fetch_completed_activities,
+    fetch_completed_tasks_by_date,
     fetch_labels,
     fetch_projects,
     fetch_section,
     fetch_sections,
+    fetch_task,
+    fetch_tasks,
 )
 
 
@@ -185,4 +188,129 @@ class TestApiLabels:
 
         with pytest.raises(RuntimeError, match="Network error fetching labels"):
             fetch_labels("dummy_token")
+
+
+class TestApiTasks:
+    """Test suite for task-related API endpoints."""
+
+    @patch("requests.get")
+    def test_fetch_tasks_paginated(self, mock_get):
+        resp1 = MagicMock()
+        resp1.status_code = 200
+        resp1.json.return_value = {
+            "results": [{"id": "t1", "content": "Task Alpha", "parent_id": None}],
+            "next_cursor": "cur_123",
+        }
+
+        resp2 = MagicMock()
+        resp2.status_code = 200
+        resp2.json.return_value = {
+            "results": [{"id": "t2", "content": "Task Beta", "parent_id": "t1"}],
+            "next_cursor": None,
+        }
+
+        mock_get.side_effect = [resp1, resp2]
+
+        tasks = fetch_tasks("dummy_token")
+        assert len(tasks) == 2
+        assert tasks[0]["id"] == "t1"
+        assert tasks[1]["parent_id"] == "t1"
+        assert mock_get.call_count == 2
+
+    @patch("requests.get")
+    def test_fetch_tasks_unauthorized(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 401
+        mock_get.return_value = mock_resp
+
+        with pytest.raises(ValueError, match="Invalid Todoist API token"):
+            fetch_tasks("invalid_token")
+
+    @patch("requests.get")
+    def test_fetch_task_single_success(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "id": "t100",
+            "content": "Single Task",
+            "parent_id": "t_parent",
+        }
+        mock_get.return_value = mock_resp
+
+        t = fetch_task("dummy_token", "t100")
+        assert t is not None
+        assert t["id"] == "t100"
+        assert t["parent_id"] == "t_parent"
+
+    @patch("requests.get")
+    def test_fetch_task_single_not_found(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 404
+        mock_get.return_value = mock_resp
+
+        assert fetch_task("dummy_token", "t_nonexistent") is None
+
+    @patch("requests.get")
+    def test_fetch_completed_tasks_by_date(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "items": [
+                {"id": "c1", "content": "Completed Child", "parent_id": "p1"},
+                {"id": "p1", "content": "Completed Parent", "parent_id": None},
+            ],
+            "next_cursor": None,
+        }
+        mock_get.return_value = mock_resp
+
+        items = fetch_completed_tasks_by_date(
+            "dummy_token",
+            since="2026-01-01T00:00:00Z",
+            until="2026-01-15T00:00:00Z",
+            project_id="proj_1",
+        )
+        assert len(items) == 2
+        assert items[0]["parent_id"] == "p1"
+        mock_get.assert_called_once()
+
+
+class TestPreloadTasks:
+    """Test suite for preload_tasks orchestration."""
+
+    @patch("todoist_trace.main.fetch_completed_tasks_by_date")
+    @patch("todoist_trace.main.fetch_tasks")
+    def test_preload_tasks_populates_cache(self, mock_active, mock_completed):
+        from todoist_trace.main import preload_tasks
+
+        mock_active.return_value = [
+            {"id": "act-1", "content": "Active Task", "parent_id": None},
+        ]
+        mock_completed.return_value = [
+            {"id": "comp-1", "content": "Completed Subtask", "parent_id": "comp-parent"},
+        ]
+
+        mock_cache = MagicMock()
+        mock_cache.enabled = True
+
+        projects = [{"id": "proj-archived", "is_archived": True}]
+        events = [
+            {"parent_project_id": "proj-archived", "event_date": "2026-02-01T10:00:00Z"},
+        ]
+
+        preload_tasks(
+            token="dummy_token",
+            cache=mock_cache,
+            projects=projects,
+            events=events,
+            req_start="2026-01-01T00:00:00Z",
+            req_end="2026-02-15T00:00:00Z",
+        )
+
+        mock_cache.save_tasks.assert_called_once()
+        saved = mock_cache.save_tasks.call_args[0][0]
+        assert "act-1" in saved
+        assert "comp-1" in saved
+        assert saved["comp-1"]["parent_id"] == "comp-parent"
+
+
 

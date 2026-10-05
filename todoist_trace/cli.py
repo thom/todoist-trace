@@ -175,6 +175,12 @@ def create_parser() -> argparse.ArgumentParser:
     _add_date_arguments(export_p)
     _add_export_only_arguments(export_p)
     export_p.add_argument(
+        "--refresh",
+        action="store_true",
+        default=False,
+        help="Force re-resolving task hierarchies and refresh materialized cache",
+    )
+    export_p.add_argument(
         "-t", "--token",
         type=str,
         default=None,

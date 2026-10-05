@@ -447,6 +447,8 @@ class TaskHierarchyResolver:
                     "priority": data.get("priority", 1),
                     "labels": data.get("labels", []),
                     "due": data.get("due"),
+                    "project_id": str(data.get("project_id", "")),
+                    "section_id": str(data.get("section_id", "")) if data.get("section_id") else None,
                 }
                 self.task_cache[tid] = task_info
                 if self.cache:
@@ -494,19 +496,34 @@ class TaskHierarchyResolver:
             }
         """
         extra = event.get("extra_data", {})
-        current_title = extra.get("content") or f"[Task {event.get('object_id', 'unknown')}]"
+        obj_id = str(event.get("object_id", ""))
+        cached_task = self.task_cache.get(obj_id, {})
+
+        current_title = extra.get("content") or cached_task.get("content") or f"[Task {obj_id or 'unknown'}]"
+
+        # Check for parent_id: extra_data -> cached_task -> event.parent_item_id -> on-demand lookup
         raw_parent_id = extra.get("parent_id")
+        if not raw_parent_id and cached_task:
+            raw_parent_id = cached_task.get("parent_id")
+        if not raw_parent_id:
+            raw_parent_id = event.get("parent_item_id")
+
+        if not raw_parent_id and not cached_task and self.token and obj_id and obj_id != "unknown":
+            task_info = self.lookup_task(obj_id)
+            if task_info:
+                cached_task = task_info
+                raw_parent_id = task_info.get("parent_id")
+                if not extra.get("content") and task_info.get("content"):
+                    current_title = task_info["content"]
+
         parent_task_id = str(raw_parent_id) if raw_parent_id else ""
-        raw_section_id = extra.get("section_id") or event.get("section_id")
+        raw_section_id = extra.get("section_id") or event.get("section_id") or cached_task.get("section_id")
         section_id = str(raw_section_id) if raw_section_id else ""
 
         event_date_str = str(event.get("event_date", ""))
         date_part, time_part = format_event_datetime(event_date_str, tz=self.tz)
 
         # Extended metadata: description, priority, labels, due date
-        obj_id = str(event.get("object_id", ""))
-        cached_task = self.task_cache.get(obj_id, {})
-
         description = extra.get("description")
         if description is None:
             description = cached_task.get("description", "")
@@ -533,7 +550,7 @@ class TaskHierarchyResolver:
                 "task_path": current_title,
                 "task_levels": [current_title],
                 "parent_task_id": "",
-                "project_id": str(event.get("parent_project_id", "")),
+                "project_id": str(event.get("parent_project_id", "") or cached_task.get("project_id", "")),
                 "section_id": section_id,
                 "event_id": str(event.get("id", "")),
                 "event_date": event_date_str,
@@ -551,7 +568,7 @@ class TaskHierarchyResolver:
 
         ancestors: List[str] = []
         curr_parent: Optional[str] = parent_task_id
-        visited = {str(event.get("object_id", ""))}
+        visited = {obj_id}
 
         while curr_parent and curr_parent not in visited:
             visited.add(curr_parent)
@@ -572,7 +589,7 @@ class TaskHierarchyResolver:
             "task_path": task_path,
             "task_levels": full_levels,
             "parent_task_id": parent_task_id,
-            "project_id": str(event.get("parent_project_id", "")),
+            "project_id": str(event.get("parent_project_id", "") or cached_task.get("project_id", "")),
             "section_id": section_id,
             "event_id": str(event.get("id", "")),
             "event_date": event_date_str,

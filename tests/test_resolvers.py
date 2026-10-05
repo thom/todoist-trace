@@ -197,6 +197,98 @@ class TestTaskHierarchyResolver:
         assert "[Task deleted_parent_999] / Orphan Subtask" == res["task_path"]
         assert res["parent_task_id"] == "deleted_parent_999"
 
+    def test_subtask_resolution_when_parent_id_in_cached_task(self):
+        """When activity event extra_data lacks parent_id, use parent_id from cached task."""
+        resolver = TaskHierarchyResolver(token="dummy_token")
+        resolver.task_cache["t_child"] = {
+            "content": "Child Subtask",
+            "parent_id": "t_parent",
+        }
+        resolver.task_cache["t_parent"] = {
+            "content": "Parent Task",
+            "parent_id": None,
+        }
+
+        event = {
+            "id": "e_cached",
+            "object_id": "t_child",
+            "parent_project_id": "p1",
+            "event_date": "2026-10-02T12:00:00Z",
+            "extra_data": {
+                "content": "Child Subtask",
+                # Note: No parent_id here, simulating older Todoist activity events
+            },
+        }
+
+        res = resolver.resolve(event)
+        assert res["task_path"] == "Parent Task / Child Subtask"
+        assert res["task_levels"] == ["Parent Task", "Child Subtask"]
+        assert res["parent_task_id"] == "t_parent"
+
+    @patch("todoist_trace.resolvers.requests.get")
+    def test_subtask_resolution_when_parent_id_from_task_lookup(self, mock_get):
+        """When neither extra_data nor cache has parent_id, fetch task on-demand."""
+        def side_effect(url, headers=None, timeout=None):
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            if "t_child" in url:
+                mock_resp.json.return_value = {
+                    "id": "t_child",
+                    "content": "Child Task",
+                    "parent_id": "t_parent",
+                }
+            elif "t_parent" in url:
+                mock_resp.json.return_value = {
+                    "id": "t_parent",
+                    "content": "Parent Task",
+                    "parent_id": None,
+                }
+            else:
+                mock_resp.status_code = 404
+            return mock_resp
+
+        mock_get.side_effect = side_effect
+
+        resolver = TaskHierarchyResolver(token="dummy_token")
+        event = {
+            "id": "e_lookup",
+            "object_id": "t_child",
+            "parent_project_id": "p1",
+            "event_date": "2026-10-02T12:00:00Z",
+            "extra_data": {
+                "content": "Child Task",
+            },
+        }
+
+        res = resolver.resolve(event)
+        assert res["task_path"] == "Parent Task / Child Task"
+        assert res["task_levels"] == ["Parent Task", "Child Task"]
+        assert res["parent_task_id"] == "t_parent"
+
+    def test_subtask_resolution_from_parent_item_id_in_event(self):
+        """When parent_item_id is set at event root and not in extra_data."""
+        resolver = TaskHierarchyResolver(token="dummy_token")
+        resolver.task_cache["t_parent"] = {
+            "content": "Parent Task",
+            "parent_id": None,
+        }
+
+        event = {
+            "id": "e_root_parent",
+            "object_id": "t_child",
+            "parent_item_id": "t_parent",
+            "parent_project_id": "p1",
+            "event_date": "2026-10-02T12:00:00Z",
+            "extra_data": {
+                "content": "Child Subtask",
+            },
+        }
+
+        res = resolver.resolve(event)
+        assert res["task_path"] == "Parent Task / Child Subtask"
+        assert res["task_levels"] == ["Parent Task", "Child Subtask"]
+        assert res["parent_task_id"] == "t_parent"
+
     def test_timezone_conversion_positive_offset_cross_midnight(self):
         """Task completed late evening in UTC belongs to the next day in Europe/Zurich (UTC+2)."""
         resolver = TaskHierarchyResolver(token="dummy_token", tz="Europe/Zurich")

@@ -8,7 +8,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .api import fetch_completed_activities, fetch_labels, fetch_projects, fetch_sections
+from .api import (
+    fetch_completed_activities,
+    fetch_completed_tasks_by_date,
+    fetch_labels,
+    fetch_projects,
+    fetch_sections,
+    fetch_tasks,
+)
 from .cache import (
     create_cache,
     normalize_end_date,
@@ -84,6 +91,93 @@ def run_status(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
         reporter.print_text("  (No ranges recorded)")
     reporter.print_text("")
     return 0
+
+
+def preload_tasks(
+    token: Optional[str],
+    cache: Any,
+    projects: List[Dict[str, Any]],
+    events: List[Dict[str, Any]],
+    req_start: Optional[str] = None,
+    req_end: Optional[str] = None,
+) -> None:
+    """Preload active and completed tasks into cache in batches to resolve subtask hierarchies."""
+    if not token or not cache or not getattr(cache, "enabled", False):
+        return
+
+    task_batch: Dict[str, Dict[str, Any]] = {}
+
+    try:
+        active_tasks = fetch_tasks(token)
+        for t in active_tasks:
+            task_batch[str(t["id"])] = {
+                "content": t.get("content", ""),
+                "parent_id": str(t["parent_id"]) if t.get("parent_id") else None,
+                "description": t.get("description", ""),
+                "priority": t.get("priority", 1),
+                "labels": t.get("labels", []),
+                "due": t.get("due"),
+                "project_id": str(t.get("project_id", "")),
+                "section_id": str(t.get("section_id", "")) if t.get("section_id") else None,
+            }
+    except Exception:
+        pass
+
+    try:
+        if events:
+            valid_dates = [ev.get("event_date", "") for ev in events if ev.get("event_date")]
+            sync_start = req_start or (min(valid_dates) if valid_dates else "2020-01-01T00:00:00Z")
+            sync_end = req_end or datetime.now(timezone.utc).isoformat()
+
+            completed_bulk = fetch_completed_tasks_by_date(token, str(sync_start), str(sync_end))
+            for t in completed_bulk:
+                task_batch[str(t["id"])] = {
+                    "content": t.get("content", ""),
+                    "parent_id": str(t["parent_id"]) if t.get("parent_id") else None,
+                    "description": t.get("description", ""),
+                    "priority": t.get("priority", 1),
+                    "labels": t.get("labels", []),
+                    "due": t.get("due"),
+                    "project_id": str(t.get("project_id", "")),
+                    "section_id": str(t.get("section_id", "")) if t.get("section_id") else None,
+                }
+
+            proj_date_spans: Dict[str, List[str]] = {}
+            for ev in events:
+                pid = str(ev.get("parent_project_id", ""))
+                ed = ev.get("event_date")
+                if pid and ed:
+                    if pid not in proj_date_spans:
+                        proj_date_spans[pid] = [ed, ed]
+                    else:
+                        if ed < proj_date_spans[pid][0]:
+                            proj_date_spans[pid][0] = ed
+                        if ed > proj_date_spans[pid][1]:
+                            proj_date_spans[pid][1] = ed
+
+            archived_pids = [
+                p for p in proj_date_spans
+                if any(str(prj.get("id")) == p and prj.get("is_archived") for prj in projects)
+            ]
+            for apid in archived_pids:
+                span = proj_date_spans[apid]
+                proj_completed = fetch_completed_tasks_by_date(token, span[0], span[1], project_id=apid)
+                for t in proj_completed:
+                    task_batch[str(t["id"])] = {
+                        "content": t.get("content", ""),
+                        "parent_id": str(t["parent_id"]) if t.get("parent_id") else None,
+                        "description": t.get("description", ""),
+                        "priority": t.get("priority", 1),
+                        "labels": t.get("labels", []),
+                        "due": t.get("due"),
+                        "project_id": str(t.get("project_id", "")),
+                        "section_id": str(t.get("section_id", "")) if t.get("section_id") else None,
+                    }
+    except Exception:
+        pass
+
+    if task_batch:
+        cache.save_tasks(task_batch)
 
 
 def run_sync(settings: Dict[str, Any], reporter: FancyProgressReporter, cache: Any) -> int:
@@ -188,6 +282,16 @@ def run_sync(settings: Dict[str, Any], reporter: FancyProgressReporter, cache: A
     else:
         events_to_resolve = new_events
 
+    # Preload active and completed tasks to resolve subtask hierarchies
+    preload_tasks(
+        token=token,
+        cache=cache,
+        projects=projects,
+        events=events_to_resolve,
+        req_start=req_start,
+        req_end=req_end,
+    )
+
     hierarchy_store = getattr(cache, "hierarchy_store", None) if cache else None
     project_resolver = ProjectTreeResolver(projects, hierarchy_store=hierarchy_store)
     section_resolver = SectionResolver(
@@ -239,9 +343,16 @@ def run_export(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
         return 1
 
     tz = settings.get("tz")
+    refresh = settings.get("refresh", False)
 
-    # Self-healing: materialize resolved activities if cache table is empty or missing events
-    if cache.get_resolved_activities_count() < cache.get_events_count():
+    # Self-healing: materialize resolved activities if cache table is empty, missing events, or refresh requested
+    if refresh or cache.get_resolved_activities_count() < cache.get_events_count():
+        if refresh:
+            cache.clear_resolved_activities()
+        token = settings.get("token")
+        if token and cache.enabled and len(cache.tasks) < 500:
+            preload_tasks(token, cache, cache.projects, cache.get_all_events())
+
         reporter.print_text("Materializing resolved activities in cache for fast exports...")
         all_events = cache.get_all_events()
         hierarchy_store = getattr(cache, "hierarchy_store", None) if cache else None

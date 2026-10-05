@@ -223,3 +223,141 @@ def fetch_labels(token: str) -> List[Dict[str, Any]]:
             break
 
     return all_labels
+
+
+def fetch_tasks(token: str, project_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    Fetch active tasks from the Todoist API using strictly read-only HTTP GET.
+    Endpoint: https://api.todoist.com/api/v1/tasks
+    """
+    url = "https://api.todoist.com/api/v1/tasks"
+    headers = {
+        "Authorization": f"Bearer {token}",
+    }
+    all_tasks: List[Dict[str, Any]] = []
+    cursor = None
+    while True:
+        params: Dict[str, Any] = {"limit": 100}
+        if cursor:
+            params["cursor"] = cursor
+        if project_id:
+            params["project_id"] = project_id
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=15)
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Network error fetching active tasks: {e}") from e
+
+        if resp.status_code == 401:
+            raise ValueError("Invalid Todoist API token.")
+        if resp.status_code != 200:
+            break
+
+        data = resp.json()
+        if isinstance(data, list):
+            all_tasks.extend(data)
+            break
+        elif isinstance(data, dict):
+            results = data.get("results", [])
+            all_tasks.extend(results)
+            cursor = data.get("next_cursor")
+            if not cursor:
+                break
+        else:
+            break
+
+    return all_tasks
+
+
+def fetch_task(token: str, task_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetch a single task by its ID using strictly read-only HTTP GET.
+    Endpoint: https://api.todoist.com/api/v1/tasks/{task_id}
+    """
+    url = f"https://api.todoist.com/api/v1/tasks/{task_id}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+    except requests.exceptions.RequestException:
+        return None
+
+    if resp.status_code == 200:
+        data = resp.json()
+        return data if isinstance(data, dict) else None
+    return None
+
+
+def fetch_completed_tasks_by_date(
+    token: str,
+    since: str,
+    until: str,
+    project_id: Optional[str] = None,
+    limit: int = 200,
+) -> List[Dict[str, Any]]:
+    """
+    Fetch completed tasks for a completion date range (split into <=88 day windows).
+    Endpoint: https://api.todoist.com/api/v1/tasks/completed/by_completion_date
+    """
+    from datetime import datetime, timezone, timedelta
+
+    def _parse_iso(s: str) -> datetime:
+        clean = s.replace("Z", "+00:00")
+        if "T" not in clean:
+            clean = f"{clean}T00:00:00+00:00"
+        dt = datetime.fromisoformat(clean)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    try:
+        s_dt = _parse_iso(since)
+        u_dt = _parse_iso(until)
+    except Exception:
+        return []
+
+    if s_dt >= u_dt:
+        u_dt = s_dt + timedelta(days=1)
+
+    windows = []
+    curr = s_dt
+    while curr < u_dt:
+        nxt = min(curr + timedelta(days=88), u_dt)
+        windows.append((curr.strftime("%Y-%m-%dT%H:%M:%SZ"), nxt.strftime("%Y-%m-%dT%H:%M:%SZ")))
+        curr = nxt
+
+    url = "https://api.todoist.com/api/v1/tasks/completed/by_completion_date"
+    headers = {
+        "Authorization": f"Bearer {token}",
+    }
+    all_items: List[Dict[str, Any]] = []
+
+    for w_start, w_end in windows:
+        cursor = None
+        while True:
+            params: Dict[str, Any] = {
+                "since": w_start,
+                "until": w_end,
+                "limit": min(limit, 200),
+            }
+            if cursor:
+                params["cursor"] = cursor
+            if project_id:
+                params["project_id"] = project_id
+
+            try:
+                resp = requests.get(url, headers=headers, params=params, timeout=15)
+            except requests.exceptions.RequestException:
+                break
+
+            if resp.status_code != 200:
+                break
+
+            data = resp.json()
+            items = data.get("items", []) if isinstance(data, dict) else []
+            all_items.extend(items)
+            cursor = data.get("next_cursor") if isinstance(data, dict) else None
+            if not cursor:
+                break
+
+    return all_items

@@ -7,10 +7,13 @@ import requests
 
 from .api import (
     fetch_completed_activities,
+    fetch_completed_tasks_by_date,
     fetch_labels,
     fetch_projects,
     fetch_section,
     fetch_sections,
+    fetch_task,
+    fetch_tasks,
 )
 from .cache import (
     LabelCacheDict,
@@ -40,7 +43,7 @@ from .exporters import (
     generate_markdown,
 )
 from .filters import filter_records
-from .main import main, run_export, run_status, run_sync
+from .main import main, preload_tasks, run_export, run_status, run_sync
 from .progress import (
     FancyProgressReporter,
     format_duration,
@@ -81,10 +84,13 @@ __all__ = [
     "export_html",
     "export_markdown",
     "fetch_completed_activities",
+    "fetch_completed_tasks_by_date",
     "fetch_labels",
     "fetch_projects",
     "fetch_section",
     "fetch_sections",
+    "fetch_task",
+    "fetch_tasks",
     "filter_records",
     "format_event_datetime",
     "format_priority",
@@ -96,6 +102,7 @@ __all__ = [
     "load_env_file",
     "main",
     "parse_args",
+    "preload_tasks",
     "resolve_settings",
     "resolve_timezone",
     "run_export",

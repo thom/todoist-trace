@@ -650,6 +650,57 @@ class TestMaterializedResolvedActivities:
         assert cache.get_resolved_activities_count() == 0
         cache.close()
 
+    def test_batch_cache_operations(self, tmp_path):
+        db_file = tmp_path / "batch_ops.db"
+        cache = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+
+        # 1. Test tasks.update and save_tasks
+        task_data = {
+            "task-1": {"id": "task-1", "content": "Synthetic Parent", "parent_id": None},
+            "task-2": {"id": "task-2", "content": "Synthetic Child", "parent_id": "task-1"},
+        }
+        cache.save_tasks(task_data)
+        assert len(cache.tasks) == 2
+        assert cache.tasks["task-2"]["parent_id"] == "task-1"
+
+        # Verify persisted in sqlite
+        cur = cache.conn.cursor()
+        cur.execute("SELECT id, parent_id, content FROM tasks ORDER BY id")
+        rows = cur.fetchall()
+        assert len(rows) == 2
+        assert rows[1][1] == "task-1"
+
+        # 2. Test tasks setter
+        cache.tasks = [
+            {"id": "task-3", "content": "Task 3", "parent_id": None},
+            {"id": "task-4", "content": "Task 4", "parent_id": "task-3"},
+        ]
+        assert len(cache.tasks) == 2
+        assert "task-3" in cache.tasks
+        assert "task-4" in cache.tasks
+
+        # 3. Test sections.update and labels.update
+        cache.sections.update({
+            "sec-1": {"id": "sec-1", "project_id": "proj-1", "name": "Backlog"},
+        })
+        assert "sec-1" in cache.sections
+
+        cache.labels.update({
+            "lbl-1": {"id": "lbl-1", "name": "urgent", "color": "red"},
+        })
+        assert "lbl-1" in cache.labels
+
+        cache.close()
+
+        # 4. Verify reopening loads fast without triggering extra writes
+        reopened = SQLiteTraceCache(cache_file=str(db_file), enabled=True)
+        assert len(reopened.tasks) == 4
+        assert len(reopened.sections) == 1
+        assert len(reopened.labels) == 1
+        assert reopened.tasks["task-4"]["parent_id"] == "task-3"
+        reopened.close()
+
+
 
 
 
