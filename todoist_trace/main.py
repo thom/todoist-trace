@@ -327,7 +327,18 @@ def run_sync(settings: Dict[str, Any], reporter: FancyProgressReporter, cache: A
 
     if cache.enabled:
         cache.save()
-        events_to_resolve = cache.get_events_in_range(req_start, req_end, tz=tz)
+        if not refresh and not new_events and cache.get_resolved_activities_count() >= cache.get_events_count():
+            reporter.print_text(
+                f"\n{reporter.style.green('✔')} Sync complete. Cache is already up to date: "
+                f"{cache.get_events_count()} events, {len(cache.tasks)} tasks, "
+                f"{len(cache.projects)} projects, {cache.get_resolved_activities_count()} resolved activities."
+            )
+            return 0
+
+        if not refresh and new_events and cache.get_resolved_activities_count() > 0:
+            events_to_resolve = new_events
+        else:
+            events_to_resolve = cache.get_events_in_range(req_start, req_end, tz=tz)
     else:
         events_to_resolve = new_events
 
