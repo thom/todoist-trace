@@ -7,6 +7,7 @@ import pytest
 import requests
 
 from todoist_trace.api import (
+    fetch_archived_sections,
     fetch_completed_activities,
     fetch_completed_tasks_by_date,
     fetch_labels,
@@ -52,6 +53,57 @@ class TestApiSections:
         res = fetch_sections("dummy_token")
         assert len(res) == 1
         assert res[0]["id"] == "s1"
+
+    @patch("requests.get")
+    def test_fetch_sections_cursor_pagination(self, mock_get):
+        resp1 = MagicMock()
+        resp1.status_code = 200
+        resp1.json.return_value = {
+            "results": [{"id": "s1", "name": "Sprint 1", "project_id": "p1"}],
+            "next_cursor": "cursor_token_123",
+        }
+        resp2 = MagicMock()
+        resp2.status_code = 200
+        resp2.json.return_value = {
+            "results": [{"id": "s2", "name": "Sprint 2", "project_id": "p1"}],
+            "next_cursor": None,
+        }
+        mock_get.side_effect = [resp1, resp2]
+
+        res = fetch_sections("dummy_token")
+        assert len(res) == 2
+        assert res[0]["id"] == "s1"
+        assert res[1]["id"] == "s2"
+        assert mock_get.call_count == 2
+
+    @patch("requests.get")
+    def test_fetch_archived_sections_success(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "sections": [
+                {"id": "arch-sec-1", "name": "Sprint 0 (Archived)", "project_id": "p1"}
+            ]
+        }
+        mock_get.return_value = mock_resp
+
+        res = fetch_archived_sections("dummy_token", "p1")
+        assert len(res) == 1
+        assert res[0]["id"] == "arch-sec-1"
+        mock_get.assert_called_once_with(
+            "https://api.todoist.com/api/v1/sections/archived?project_id=p1",
+            headers={"Authorization": "Bearer dummy_token"},
+            timeout=15,
+        )
+
+    @patch("requests.get")
+    def test_fetch_archived_sections_failure_graceful(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 404
+        mock_get.return_value = mock_resp
+
+        res = fetch_archived_sections("dummy_token", "p1")
+        assert res == []
 
     @patch("requests.get")
     def test_fetch_sections_unauthorized(self, mock_get):
@@ -344,6 +396,46 @@ class TestPreloadTasks:
         args, kwargs = archived_calls[0]
         assert args[1].startswith("2026-03-08")
         assert args[2].startswith("2026-03-17")
+
+    @patch("todoist_trace.main.fetch_archived_sections")
+    @patch("todoist_trace.main.fetch_completed_tasks_by_date")
+    @patch("todoist_trace.main.fetch_tasks")
+    def test_preload_tasks_preloads_archived_sections_for_events(
+        self, mock_active, mock_completed, mock_arch_secs
+    ):
+        from todoist_trace.main import preload_tasks
+
+        mock_active.return_value = []
+        mock_completed.return_value = []
+        mock_arch_secs.return_value = [
+            {"id": "arch-sec-abc", "name": "Sprint Alpha", "project_id": "proj-1"}
+        ]
+
+        sections_dict = {}
+        mock_cache = MagicMock()
+        mock_cache.enabled = True
+        mock_cache.sections = sections_dict
+
+        projects = [{"id": "proj-1", "is_archived": False}]
+        events = [
+            {
+                "parent_project_id": "proj-1",
+                "event_date": "2026-04-01T12:00:00Z",
+                "extra_data": {"section_id": "arch-sec-abc"},
+            }
+        ]
+
+        preload_tasks(
+            token="dummy_token",
+            cache=mock_cache,
+            projects=projects,
+            events=events,
+        )
+
+        mock_arch_secs.assert_called_once_with("dummy_token", "proj-1")
+        assert "arch-sec-abc" in sections_dict
+        assert sections_dict["arch-sec-abc"]["name"] == "Sprint Alpha"
+
 
 
 

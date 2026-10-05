@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .api import (
+    fetch_archived_sections,
     fetch_completed_activities,
     fetch_completed_tasks_by_date,
     fetch_labels,
@@ -225,6 +226,30 @@ def preload_tasks(
                     _flush_batch()
             except Exception:
                 continue
+
+        # 4. Preload archived sections for projects in events that reference sections
+        if hasattr(cache, "sections"):
+            pids_with_sections = set()
+            for ev in events:
+                pid = str(ev.get("parent_project_id", ""))
+                ed = ev.get("extra_data")
+                if isinstance(ed, str):
+                    if "section_id" in ed:
+                        pids_with_sections.add(pid)
+                elif isinstance(ed, dict):
+                    if ed.get("section_id"):
+                        pids_with_sections.add(pid)
+
+            for pid in pids_with_sections:
+                if not pid:
+                    continue
+                try:
+                    arch_secs = fetch_archived_sections(token, pid)
+                    for s in arch_secs:
+                        if s.get("id"):
+                            cache.sections[str(s["id"])] = s
+                except Exception:
+                    pass
 
     _flush_batch()
 

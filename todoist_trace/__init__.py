@@ -6,6 +6,7 @@ and task hierarchy resolution.
 import requests
 
 from .api import (
+    fetch_archived_sections,
     fetch_completed_activities,
     fetch_completed_tasks_by_date,
     fetch_labels,
@@ -83,6 +84,7 @@ __all__ = [
     "export_csv",
     "export_html",
     "export_markdown",
+    "fetch_archived_sections",
     "fetch_completed_activities",
     "fetch_completed_tasks_by_date",
     "fetch_labels",

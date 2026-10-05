@@ -503,6 +503,70 @@ class TestSectionResolver:
         assert records[0]["top_level_project"] == "Work"
         assert records[0]["task_path"] == "Deploy release"
 
+    @patch("time.sleep", return_value=None)
+    @patch("requests.get")
+    def test_lookup_section_retries_on_5xx_server_error(self, mock_get, mock_sleep):
+        from todoist_trace.resolvers import SectionResolver
+        resp_err = MagicMock()
+        resp_err.status_code = 502
+
+        resp_ok = MagicMock()
+        resp_ok.status_code = 200
+        resp_ok.json.return_value = {
+            "id": "s_retry",
+            "project_id": "p1",
+            "name": "Retried Section",
+        }
+        mock_get.side_effect = [resp_err, resp_ok]
+
+        resolver = SectionResolver(token="dummy_token")
+        name = resolver.resolve("s_retry")
+        assert name == "Retried Section"
+        assert mock_get.call_count == 2
+
+    def test_build_trace_records_reconciles_fallback_sections(self):
+        from todoist_trace.resolvers import (
+            ProjectTreeResolver,
+            SectionResolver,
+            TaskHierarchyResolver,
+            build_trace_records,
+        )
+        projects = [{"id": "p1", "name": "Work", "parent_id": None}]
+        p_resolver = ProjectTreeResolver(projects)
+        t_resolver = TaskHierarchyResolver(token="dummy")
+
+        # Simulate a resolver where event 1 was initially unresolved, but section_cache was populated
+        s_resolver = SectionResolver()
+        # Mock resolve to return fallback first, then success
+        call_count = {"count": 0}
+        def fake_resolve(sid):
+            call_count["count"] += 1
+            if call_count["count"] == 1:
+                return f"[Section {sid}]"
+            return "Resolved Section Title"
+        s_resolver.resolve = fake_resolve
+
+        events = [
+            {
+                "id": "e1",
+                "object_id": "t1",
+                "event_date": "2026-10-02T10:00:00Z",
+                "parent_project_id": "p1",
+                "extra_data": {"content": "Task 1", "section_id": "sec_x"},
+            },
+            {
+                "id": "e2",
+                "object_id": "t2",
+                "event_date": "2026-10-02T10:05:00Z",
+                "parent_project_id": "p1",
+                "extra_data": {"content": "Task 2", "section_id": "sec_x"},
+            },
+        ]
+        records = build_trace_records(events, p_resolver, t_resolver, section_resolver=s_resolver)
+        # Event 1 should have been reconciled in pass 2 to the resolved section title
+        assert records[0]["section"] == "Resolved Section Title"
+        assert records[1]["section"] == "Resolved Section Title"
+
 
 class TestLabelResolver:
     """Test suite for LabelResolver."""

@@ -225,6 +225,11 @@ class SectionResolver:
                     if self.cache and hasattr(self.cache, "sections"):
                         self.cache.sections[sid] = fallback
                     return fallback
+                elif resp.status_code in (500, 502, 503, 504):
+                    if attempt < 3:
+                        time.sleep(1.0 * (attempt + 1))
+                        continue
+                    return self.section_cache.get(sid)
                 else:
                     return self.section_cache.get(sid)
             except requests.exceptions.RequestException:
@@ -678,4 +683,32 @@ def build_trace_records(
         })
         if progress_cb and (idx % 20 == 0 or idx == total):
             progress_cb(idx, total)
+
+    # Pass 2: Reconcile any fallback section or task strings if resolvers learned the real names
+    if section_resolver:
+        for r in records:
+            sec_id = r.get("section_id")
+            if sec_id and r.get("section", "").startswith("[Section "):
+                resolved_sec = section_resolver.resolve(sec_id)
+                if resolved_sec and not resolved_sec.startswith("[Section "):
+                    r["section"] = resolved_sec
+
+    if task_resolver:
+        for r in records:
+            if "[Task " in r.get("task_path", ""):
+                parent_id = r.get("parent_task_id")
+                if parent_id and parent_id in task_resolver.task_cache:
+                    parent_info = task_resolver.task_cache[parent_id]
+                    if parent_info and parent_info.get("content") and not parent_info["content"].startswith("[Task "):
+                        ev_stub = {
+                            "id": r.get("event_id"),
+                            "object_id": r.get("task_id"),
+                            "parent_project_id": r.get("project_id"),
+                            "event_date": r.get("event_date"),
+                        }
+                        re_t = task_resolver.resolve(ev_stub)
+                        if "[Task " not in re_t.get("task_path", ""):
+                            r["task_path"] = re_t["task_path"]
+                            r["task_levels"] = re_t["task_levels"]
+
     return records
