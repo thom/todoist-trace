@@ -312,5 +312,39 @@ class TestPreloadTasks:
         assert "comp-1" in saved
         assert saved["comp-1"]["parent_id"] == "comp-parent"
 
+    @patch("todoist_trace.main.fetch_completed_tasks_by_date")
+    @patch("todoist_trace.main.fetch_tasks")
+    def test_preload_tasks_pads_date_spans_for_archived_projects(self, mock_active, mock_completed):
+        from todoist_trace.main import preload_tasks
+
+        mock_active.return_value = []
+        mock_completed.return_value = []
+
+        mock_cache = MagicMock()
+        mock_cache.enabled = True
+
+        projects = [{"id": "proj-archived-99", "is_archived": True}]
+        events = [
+            {"parent_project_id": "proj-archived-99", "event_date": "2026-03-10T12:00:00Z"},
+            {"parent_project_id": "proj-archived-99", "event_date": "2026-03-15T18:00:00Z"},
+        ]
+
+        preload_tasks(
+            token="dummy_token",
+            cache=mock_cache,
+            projects=projects,
+            events=events,
+        )
+
+        archived_calls = [
+            call for call in mock_completed.call_args_list
+            if call.kwargs.get("project_id") == "proj-archived-99"
+        ]
+        assert len(archived_calls) == 1
+        args, kwargs = archived_calls[0]
+        assert args[1].startswith("2026-03-08")
+        assert args[2].startswith("2026-03-17")
+
+
 
 

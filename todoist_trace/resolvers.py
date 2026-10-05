@@ -4,6 +4,7 @@ Traces multi-level project trees and recursive parent-child task structures.
 """
 
 from datetime import datetime, timezone, tzinfo
+import time
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import requests
 
@@ -188,37 +189,50 @@ class SectionResolver:
     def lookup_section(self, section_id: str) -> Optional[Dict[str, Any]]:
         """Lookup section dictionary by id, caching results."""
         sid = str(section_id)
-        if sid in self.section_cache:
+        if sid in self.section_cache and not self.section_cache[sid].get("name", "").startswith("[Section "):
             return self.section_cache[sid]
 
         if not self.token:
-            return None
+            return self.section_cache.get(sid)
 
         url = f"https://api.todoist.com/api/v1/sections/{sid}"
-        try:
-            resp = requests.get(url, headers=self.headers, timeout=10)
-            if resp.status_code == 200:
-                data = resp.json()
-                if isinstance(data, dict):
-                    sec_info = {
-                        "id": sid,
-                        "project_id": str(data.get("project_id", "")),
-                        "name": data.get("name", f"[Section {sid}]"),
-                    }
-                    self.section_cache[sid] = sec_info
+        for attempt in range(4):
+            try:
+                resp = requests.get(url, headers=self.headers, timeout=10)
+                if resp.status_code == 429:
+                    retry_after_str = resp.headers.get("Retry-After")
+                    try:
+                        retry_sec = float(retry_after_str) if retry_after_str else (1.5 * (attempt + 1))
+                    except (ValueError, TypeError):
+                        retry_sec = 1.5 * (attempt + 1)
+                    time.sleep(min(retry_sec, 30.0))
+                    continue
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if isinstance(data, dict):
+                        sec_info = {
+                            "id": sid,
+                            "project_id": str(data.get("project_id", "")),
+                            "name": data.get("name", f"[Section {sid}]"),
+                        }
+                        self.section_cache[sid] = sec_info
+                        if self.cache and hasattr(self.cache, "sections"):
+                            self.cache.sections[sid] = sec_info
+                        return sec_info
+                elif resp.status_code == 404:
+                    fallback = {"id": sid, "project_id": "", "name": f"[Section {sid}]"}
+                    self.section_cache[sid] = fallback
                     if self.cache and hasattr(self.cache, "sections"):
-                        self.cache.sections[sid] = sec_info
-                    return sec_info
-            elif resp.status_code == 404:
-                fallback = {"id": sid, "project_id": "", "name": f"[Section {sid}]"}
-                self.section_cache[sid] = fallback
-                if self.cache and hasattr(self.cache, "sections"):
-                    self.cache.sections[sid] = fallback
-                return fallback
-        except requests.exceptions.RequestException:
-            pass
+                        self.cache.sections[sid] = fallback
+                    return fallback
+                else:
+                    return self.section_cache.get(sid)
+            except requests.exceptions.RequestException:
+                if attempt == 3:
+                    return self.section_cache.get(sid)
+                time.sleep(1.0 * (attempt + 1))
 
-        return None
+        return self.section_cache.get(sid)
 
     def resolve(self, section_id: Optional[Any]) -> str:
         """
@@ -429,48 +443,62 @@ class TaskHierarchyResolver:
     def lookup_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Lookup task content and parent_id, caching results."""
         tid = str(task_id)
-        if tid in self.task_cache:
+        if tid in self.task_cache and not self.task_cache[tid].get("content", "").startswith("[Task "):
             return self.task_cache[tid]
 
         if not self.token:
-            return None
+            return self.task_cache.get(tid)
 
         url = f"https://api.todoist.com/api/v1/tasks/{tid}"
-        try:
-            resp = requests.get(url, headers=self.headers, timeout=10)
-            if resp.status_code == 200:
-                data = resp.json()
-                task_info = {
-                    "content": data.get("content", f"[Task {tid}]"),
-                    "parent_id": str(data["parent_id"]) if data.get("parent_id") else None,
-                    "description": data.get("description", ""),
-                    "priority": data.get("priority", 1),
-                    "labels": data.get("labels", []),
-                    "due": data.get("due"),
-                    "project_id": str(data.get("project_id", "")),
-                    "section_id": str(data.get("section_id", "")) if data.get("section_id") else None,
-                }
-                self.task_cache[tid] = task_info
-                if self.cache:
-                    self.cache.tasks[tid] = task_info
-                return task_info
-            elif resp.status_code == 404:
-                fallback = {
-                    "content": f"[Task {tid}]",
-                    "parent_id": None,
-                    "description": "",
-                    "priority": 1,
-                    "labels": [],
-                    "due": None,
-                }
-                self.task_cache[tid] = fallback
-                if self.cache:
-                    self.cache.tasks[tid] = fallback
-                return fallback
-        except requests.exceptions.RequestException:
-            pass
+        for attempt in range(4):
+            try:
+                resp = requests.get(url, headers=self.headers, timeout=10)
+                if resp.status_code == 429:
+                    retry_after_str = resp.headers.get("Retry-After")
+                    try:
+                        retry_sec = float(retry_after_str) if retry_after_str else (1.5 * (attempt + 1))
+                    except (ValueError, TypeError):
+                        retry_sec = 1.5 * (attempt + 1)
+                    time.sleep(min(retry_sec, 30.0))
+                    continue
+                if resp.status_code == 200:
+                    data = resp.json()
+                    task_info = {
+                        "content": data.get("content", f"[Task {tid}]"),
+                        "parent_id": str(data["parent_id"]) if data.get("parent_id") else None,
+                        "description": data.get("description", ""),
+                        "priority": data.get("priority", 1),
+                        "labels": data.get("labels", []),
+                        "due": data.get("due"),
+                        "project_id": str(data.get("project_id", "")),
+                        "section_id": str(data.get("section_id", "")) if data.get("section_id") else None,
+                    }
+                    self.task_cache[tid] = task_info
+                    if self.cache and hasattr(self.cache, "tasks"):
+                        self.cache.tasks[tid] = task_info
+                    return task_info
+                elif resp.status_code == 404:
+                    fallback = {
+                        "content": f"[Task {tid}]",
+                        "parent_id": None,
+                        "description": "",
+                        "priority": 1,
+                        "labels": [],
+                        "due": None,
+                    }
+                    self.task_cache[tid] = fallback
+                    if self.cache and hasattr(self.cache, "tasks"):
+                        self.cache.tasks[tid] = fallback
+                    return fallback
+                else:
+                    return self.task_cache.get(tid)
+            except requests.exceptions.RequestException:
+                if attempt == 3:
+                    return self.task_cache.get(tid)
+                time.sleep(1.0 * (attempt + 1))
 
-        return None
+        return self.task_cache.get(tid)
+
 
     def resolve(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """

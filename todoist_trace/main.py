@@ -4,7 +4,7 @@ Supports git-style subcommands: sync, export, status, and run.
 """
 
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -138,8 +138,15 @@ def preload_tasks(
             valid_dates = [ev.get("event_date", "") for ev in events if ev.get("event_date")]
             sync_start = req_start or (min(valid_dates) if valid_dates else "2020-01-01T00:00:00Z")
             sync_end = req_end or datetime.now(timezone.utc).isoformat()
+            try:
+                s_dt = datetime.fromisoformat(str(sync_start).replace("Z", "+00:00")) - timedelta(days=2)
+                u_dt = datetime.fromisoformat(str(sync_end).replace("Z", "+00:00")) + timedelta(days=2)
+                sync_start_str = s_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                sync_end_str = u_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            except Exception:
+                sync_start_str, sync_end_str = str(sync_start), str(sync_end)
 
-            completed_bulk = fetch_completed_tasks_by_date(token, str(sync_start), str(sync_end))
+            completed_bulk = fetch_completed_tasks_by_date(token, sync_start_str, sync_end_str)
             for t in completed_bulk:
                 task_batch[str(t["id"])] = {
                     "content": t.get("content", ""),
@@ -183,7 +190,15 @@ def preload_tasks(
         for apid in archived_pids:
             try:
                 span = proj_date_spans[apid]
-                proj_completed = fetch_completed_tasks_by_date(token, span[0], span[1], project_id=apid)
+                try:
+                    s_dt = datetime.fromisoformat(span[0].replace("Z", "+00:00")) - timedelta(days=2)
+                    u_dt = datetime.fromisoformat(span[1].replace("Z", "+00:00")) + timedelta(days=2)
+                    since_str = s_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                    until_str = u_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                except Exception:
+                    since_str, until_str = span[0], span[1]
+
+                proj_completed = fetch_completed_tasks_by_date(token, since_str, until_str, project_id=apid)
                 for t in proj_completed:
                     task_batch[str(t["id"])] = {
                         "content": t.get("content", ""),

@@ -265,6 +265,32 @@ class TestTaskHierarchyResolver:
         assert res["task_levels"] == ["Parent Task", "Child Task"]
         assert res["parent_task_id"] == "t_parent"
 
+    @patch("todoist_trace.resolvers.requests.get")
+    def test_lookup_task_retries_on_rate_limit_and_resolves(self, mock_get):
+        """Test that lookup_task retries on HTTP 429 and replaces fallback tasks."""
+        resp_429 = MagicMock()
+        resp_429.status_code = 429
+        resp_429.headers = {"Retry-After": "0.01"}
+
+        resp_200 = MagicMock()
+        resp_200.status_code = 200
+        resp_200.json.return_value = {
+            "id": "t_retry_99",
+            "content": "Resolved Parent Task",
+            "parent_id": None,
+        }
+
+        mock_get.side_effect = [resp_429, resp_200]
+
+        resolver = TaskHierarchyResolver(token="dummy_token")
+        resolver.task_cache["t_retry_99"] = {"content": "[Task t_retry_99]", "parent_id": None}
+
+        task = resolver.lookup_task("t_retry_99")
+        assert task is not None
+        assert task["content"] == "Resolved Parent Task"
+        assert mock_get.call_count == 2
+
+
     def test_subtask_resolution_from_parent_item_id_in_event(self):
         """When parent_item_id is set at event root and not in extra_data."""
         resolver = TaskHierarchyResolver(token="dummy_token")
