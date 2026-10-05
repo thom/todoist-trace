@@ -182,12 +182,23 @@ def preload_tasks(
             if any(str(prj.get("id")) == p and prj.get("is_archived") for prj in projects)
         ]
 
-        if reporter and archived_pids:
+        pids_to_fetch = []
+        for apid in archived_pids:
+            ev_obj_ids = {
+                str(ev.get("object_id"))
+                for ev in events
+                if str(ev.get("parent_project_id", "")) == apid and ev.get("object_id")
+            }
+            if ev_obj_ids and hasattr(cache, "tasks") and all(oid in cache.tasks for oid in ev_obj_ids):
+                continue
+            pids_to_fetch.append(apid)
+
+        if reporter and pids_to_fetch:
             reporter.print_text(
-                f"  → Preloading tasks across {len(archived_pids)} archived projects..."
+                f"  → Preloading tasks across {len(pids_to_fetch)} archived projects..."
             )
 
-        for apid in archived_pids:
+        for apid in pids_to_fetch:
             try:
                 span = proj_date_spans[apid]
                 try:
