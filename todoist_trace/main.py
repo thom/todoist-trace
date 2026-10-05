@@ -389,7 +389,7 @@ def run_export(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
         if refresh:
             cache.clear_resolved_activities()
         token = settings.get("token")
-        if token and cache.enabled and len(cache.tasks) == 0:
+        if token and cache.enabled and (refresh or len(cache.tasks) == 0):
             preload_tasks(token, cache, cache.projects, cache.get_all_events(), reporter=reporter)
 
         reporter.print_text("Materializing resolved activities in cache for fast exports...")
