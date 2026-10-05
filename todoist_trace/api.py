@@ -3,8 +3,41 @@ Todoist REST API v1 client for todoist-trace.
 Strictly read-only and non-destructive: only HTTP GET requests are performed.
 """
 
+import time
 from typing import Any, Callable, Dict, List, Optional
 import requests
+
+
+def _request_with_retry(
+    url: str,
+    headers: Dict[str, str],
+    params: Optional[Dict[str, Any]] = None,
+    timeout: int = 15,
+    max_retries: int = 4,
+) -> requests.Response:
+    """Execute a strictly read-only HTTP GET request with retry on HTTP 429 and transient errors."""
+    kwargs: Dict[str, Any] = {"headers": headers, "timeout": timeout}
+    if params is not None:
+        kwargs["params"] = params
+
+    for attempt in range(max_retries):
+        try:
+            resp = requests.get(url, **kwargs)
+            if resp.status_code == 429:
+                retry_after_str = resp.headers.get("Retry-After")
+                try:
+                    retry_sec = float(retry_after_str) if retry_after_str else (1.5 * (attempt + 1))
+                except (ValueError, TypeError):
+                    retry_sec = 1.5 * (attempt + 1)
+                time.sleep(min(retry_sec, 30.0))
+                continue
+            return resp
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(1.0 * (attempt + 1))
+    return resp
+
 
 
 def fetch_projects(
@@ -28,7 +61,7 @@ def fetch_projects(
     while True:
         params = {"cursor": cursor} if cursor else {}
         try:
-            resp = requests.get(url, headers=headers, params=params, timeout=15)
+            resp = _request_with_retry(url, headers=headers, params=params, timeout=15)
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Network error communicating with Todoist API: {e}") from e
 
@@ -57,7 +90,7 @@ def fetch_projects(
     while True:
         params = {"cursor": cursor} if cursor else {}
         try:
-            resp = requests.get(archived_url, headers=headers, params=params, timeout=15)
+            resp = _request_with_retry(archived_url, headers=headers, params=params, timeout=15)
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Network error fetching archived projects: {e}") from e
 
@@ -114,7 +147,7 @@ def fetch_completed_activities(
             params["date_to"] = date_to
 
         try:
-            resp = requests.get(url, headers=headers, params=params, timeout=15)
+            resp = _request_with_retry(url, headers=headers, params=params, timeout=15)
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Network error fetching activity logs: {e}") from e
 
@@ -149,7 +182,7 @@ def fetch_sections(token: str) -> List[Dict[str, Any]]:
         "Authorization": f"Bearer {token}",
     }
     try:
-        resp = requests.get(url, headers=headers, timeout=15)
+        resp = _request_with_retry(url, headers=headers, timeout=15)
     except requests.exceptions.RequestException as e:
         raise RuntimeError(f"Network error fetching sections: {e}") from e
 
@@ -176,7 +209,7 @@ def fetch_section(token: str, section_id: str) -> Optional[Dict[str, Any]]:
         "Authorization": f"Bearer {token}",
     }
     try:
-        resp = requests.get(url, headers=headers, timeout=10)
+        resp = _request_with_retry(url, headers=headers, timeout=10)
     except requests.exceptions.RequestException:
         return None
 
@@ -200,7 +233,7 @@ def fetch_labels(token: str) -> List[Dict[str, Any]]:
     while True:
         params = {"cursor": cursor} if cursor else {}
         try:
-            resp = requests.get(url, headers=headers, params=params, timeout=15)
+            resp = _request_with_retry(url, headers=headers, params=params, timeout=15)
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Network error fetching labels: {e}") from e
 
@@ -243,7 +276,7 @@ def fetch_tasks(token: str, project_id: Optional[str] = None) -> List[Dict[str, 
         if project_id:
             params["project_id"] = project_id
         try:
-            resp = requests.get(url, headers=headers, params=params, timeout=15)
+            resp = _request_with_retry(url, headers=headers, params=params, timeout=15)
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Network error fetching active tasks: {e}") from e
 
@@ -278,7 +311,7 @@ def fetch_task(token: str, task_id: str) -> Optional[Dict[str, Any]]:
         "Authorization": f"Bearer {token}",
     }
     try:
-        resp = requests.get(url, headers=headers, timeout=10)
+        resp = _request_with_retry(url, headers=headers, timeout=10)
     except requests.exceptions.RequestException:
         return None
 
@@ -346,7 +379,7 @@ def fetch_completed_tasks_by_date(
                 params["project_id"] = project_id
 
             try:
-                resp = requests.get(url, headers=headers, params=params, timeout=15)
+                resp = _request_with_retry(url, headers=headers, params=params, timeout=15)
             except requests.exceptions.RequestException:
                 break
 

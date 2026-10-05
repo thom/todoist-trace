@@ -100,6 +100,7 @@ def preload_tasks(
     events: List[Dict[str, Any]],
     req_start: Optional[str] = None,
     req_end: Optional[str] = None,
+    reporter: Optional[FancyProgressReporter] = None,
 ) -> None:
     """Preload active and completed tasks into cache in batches to resolve subtask hierarchies."""
     if not token or not cache or not getattr(cache, "enabled", False):
@@ -107,6 +108,12 @@ def preload_tasks(
 
     task_batch: Dict[str, Dict[str, Any]] = {}
 
+    def _flush_batch() -> None:
+        if task_batch:
+            cache.save_tasks(dict(task_batch))
+            task_batch.clear()
+
+    # 1. Active tasks
     try:
         active_tasks = fetch_tasks(token)
         for t in active_tasks:
@@ -120,11 +127,14 @@ def preload_tasks(
                 "project_id": str(t.get("project_id", "")),
                 "section_id": str(t.get("section_id", "")) if t.get("section_id") else None,
             }
+        if len(task_batch) >= 500:
+            _flush_batch()
     except Exception:
         pass
 
-    try:
-        if events:
+    # 2. Completed tasks across active projects
+    if events:
+        try:
             valid_dates = [ev.get("event_date", "") for ev in events if ev.get("event_date")]
             sync_start = req_start or (min(valid_dates) if valid_dates else "2020-01-01T00:00:00Z")
             sync_end = req_end or datetime.now(timezone.utc).isoformat()
@@ -141,25 +151,37 @@ def preload_tasks(
                     "project_id": str(t.get("project_id", "")),
                     "section_id": str(t.get("section_id", "")) if t.get("section_id") else None,
                 }
+            if len(task_batch) >= 500:
+                _flush_batch()
+        except Exception:
+            pass
 
-            proj_date_spans: Dict[str, List[str]] = {}
-            for ev in events:
-                pid = str(ev.get("parent_project_id", ""))
-                ed = ev.get("event_date")
-                if pid and ed:
-                    if pid not in proj_date_spans:
-                        proj_date_spans[pid] = [ed, ed]
-                    else:
-                        if ed < proj_date_spans[pid][0]:
-                            proj_date_spans[pid][0] = ed
-                        if ed > proj_date_spans[pid][1]:
-                            proj_date_spans[pid][1] = ed
+        # 3. Completed tasks across archived projects
+        proj_date_spans: Dict[str, List[str]] = {}
+        for ev in events:
+            pid = str(ev.get("parent_project_id", ""))
+            ed = ev.get("event_date")
+            if pid and ed:
+                if pid not in proj_date_spans:
+                    proj_date_spans[pid] = [ed, ed]
+                else:
+                    if ed < proj_date_spans[pid][0]:
+                        proj_date_spans[pid][0] = ed
+                    if ed > proj_date_spans[pid][1]:
+                        proj_date_spans[pid][1] = ed
 
-            archived_pids = [
-                p for p in proj_date_spans
-                if any(str(prj.get("id")) == p and prj.get("is_archived") for prj in projects)
-            ]
-            for apid in archived_pids:
+        archived_pids = [
+            p for p in proj_date_spans
+            if any(str(prj.get("id")) == p and prj.get("is_archived") for prj in projects)
+        ]
+
+        if reporter and archived_pids:
+            reporter.print_text(
+                f"  → Preloading tasks across {len(archived_pids)} archived projects..."
+            )
+
+        for apid in archived_pids:
+            try:
                 span = proj_date_spans[apid]
                 proj_completed = fetch_completed_tasks_by_date(token, span[0], span[1], project_id=apid)
                 for t in proj_completed:
@@ -173,11 +195,12 @@ def preload_tasks(
                         "project_id": str(t.get("project_id", "")),
                         "section_id": str(t.get("section_id", "")) if t.get("section_id") else None,
                     }
-    except Exception:
-        pass
+                if len(task_batch) >= 500:
+                    _flush_batch()
+            except Exception:
+                continue
 
-    if task_batch:
-        cache.save_tasks(task_batch)
+    _flush_batch()
 
 
 def run_sync(settings: Dict[str, Any], reporter: FancyProgressReporter, cache: Any) -> int:
@@ -290,6 +313,7 @@ def run_sync(settings: Dict[str, Any], reporter: FancyProgressReporter, cache: A
         events=events_to_resolve,
         req_start=req_start,
         req_end=req_end,
+        reporter=reporter,
     )
 
     hierarchy_store = getattr(cache, "hierarchy_store", None) if cache else None
@@ -350,8 +374,8 @@ def run_export(settings: Dict[str, Any], reporter: FancyProgressReporter, cache:
         if refresh:
             cache.clear_resolved_activities()
         token = settings.get("token")
-        if token and cache.enabled and len(cache.tasks) < 500:
-            preload_tasks(token, cache, cache.projects, cache.get_all_events())
+        if token and cache.enabled and len(cache.tasks) == 0:
+            preload_tasks(token, cache, cache.projects, cache.get_all_events(), reporter=reporter)
 
         reporter.print_text("Materializing resolved activities in cache for fast exports...")
         all_events = cache.get_all_events()
