@@ -8,6 +8,7 @@ import io
 from pathlib import Path
 from typing import Any, Dict, List
 
+from .filters import deduplicate_records
 from .html_exporter import export_html, generate_html
 
 
@@ -23,6 +24,7 @@ def generate_csv(
     Headers: top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id
     Optional metadata columns: labels, description, priority, due_date, due_variance
     """
+    records = deduplicate_records(records)
     output = io.StringIO()
     fieldnames = [
         "top_level_project",
@@ -273,6 +275,8 @@ def generate_markdown(
     """
     if not records:
         return ""
+
+    records = deduplicate_records(records)
 
     # Sort records descending by date, then time
     sorted_records = sorted(

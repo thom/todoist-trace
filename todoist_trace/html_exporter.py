@@ -27,6 +27,9 @@ def generate_html(
     categories_config: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Generate a self-contained, interactive HTML dashboard."""
+    from .filters import deduplicate_records
+    records = deduplicate_records(records)
+
     # Sanitize JSON payload for embedding inside <script>
     json_data = json.dumps(records).replace("</", "<\\/")
 

@@ -43,7 +43,7 @@ from .exporters import (
     generate_html,
     generate_markdown,
 )
-from .filters import filter_records
+from .filters import deduplicate_records, filter_records
 from .main import main, preload_archived_sections, preload_tasks, run_export, run_status, run_sync
 from .progress import (
     FancyProgressReporter,
@@ -81,6 +81,7 @@ __all__ = [
     "coalesce_intervals",
     "create_cache",
     "create_parser",
+    "deduplicate_records",
     "export_csv",
     "export_html",
     "export_markdown",

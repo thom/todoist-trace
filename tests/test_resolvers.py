@@ -394,6 +394,42 @@ class TestTaskHierarchyResolver:
         res2 = resolver.resolve(event_direct)
         assert res2["section_id"] == "sec_456"
 
+    def test_task_hierarchy_prioritizes_cached_task_parent_over_extra_data(self):
+        # When a task was moved or uncompleted, cached_task has the canonical parent_id,
+        # while historical event extra_data might point to an obsolete parent_id.
+        preloaded_tasks = {
+            "sub_1": {
+                "id": "sub_1",
+                "content": "Subtask Alpha",
+                "parent_id": "parent_canonical",
+            },
+            "parent_canonical": {
+                "id": "parent_canonical",
+                "content": "Prepare Project Roadmap",
+                "parent_id": None,
+            },
+            "parent_stale": {
+                "id": "parent_stale",
+                "content": "Outdated Meeting Notes",
+                "parent_id": None,
+            },
+        }
+        resolver = TaskHierarchyResolver(preloaded_tasks=preloaded_tasks, tz="UTC")
+        event = {
+            "id": "e_sub",
+            "object_id": "sub_1",
+            "parent_project_id": "p_main",
+            "event_date": "2026-09-03T10:00:00Z",
+            "extra_data": {
+                "content": "Subtask Alpha",
+                "parent_id": "parent_stale",  # Historical event had stale parent
+            },
+        }
+        res = resolver.resolve(event)
+        # Should resolve under the canonical parent, not the stale one
+        assert res["parent_task_id"] == "parent_canonical"
+        assert res["task_path"] == "Prepare Project Roadmap / Subtask Alpha"
+
 
 class TestSectionResolver:
     """Test suite for SectionResolver."""

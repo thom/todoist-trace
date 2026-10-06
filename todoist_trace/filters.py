@@ -3,8 +3,46 @@ Filtering logic for todoist-trace records.
 Supports filtering by category (work, personal, others, all) and date ranges.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from .config import get_project_category
+
+
+def deduplicate_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Deduplicate same-day task completions by (date, task_id).
+    When a task is checked off, renamed, and checked off again on the same day,
+    preserves only the latest completion event while maintaining original order.
+    """
+    if not records:
+        return []
+
+    # Map each (date, task_id) to the latest completion event
+    best_event_for_key: Dict[Tuple[str, str], Tuple[Tuple[str, str, str], Any]] = {}
+    for r in records:
+        tid = str(r.get("task_id") or "").strip()
+        dt = str(r.get("date") or "").strip()
+        if tid and dt:
+            key = (dt, tid)
+            ts = (str(r.get("date") or ""), str(r.get("time") or ""), str(r.get("event_date") or ""))
+            if key not in best_event_for_key or ts > best_event_for_key[key][0]:
+                best_event_for_key[key] = (ts, r.get("event_id"))
+
+    # Filter records preserving original sequence
+    deduped: List[Dict[str, Any]] = []
+    seen: set = set()
+    for r in records:
+        tid = str(r.get("task_id") or "").strip()
+        dt = str(r.get("date") or "").strip()
+        if tid and dt:
+            key = (dt, tid)
+            best_ts, best_eid = best_event_for_key[key]
+            if r.get("event_id") != best_eid:
+                continue
+            if key in seen:
+                continue
+            seen.add(key)
+        deduped.append(r)
+    return deduped
 
 
 def filter_records(
@@ -48,4 +86,4 @@ def filter_records(
 
         filtered.append(r)
 
-    return filtered
+    return deduplicate_records(filtered)

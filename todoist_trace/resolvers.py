@@ -534,10 +534,10 @@ class TaskHierarchyResolver:
 
         current_title = extra.get("content") or cached_task.get("content") or f"[Task {obj_id or 'unknown'}]"
 
-        # Check for parent_id: extra_data -> cached_task -> event.parent_item_id -> on-demand lookup
-        raw_parent_id = extra.get("parent_id")
-        if not raw_parent_id and cached_task:
-            raw_parent_id = cached_task.get("parent_id")
+        # Check for parent_id: cached_task -> extra_data -> event.parent_item_id -> on-demand lookup
+        raw_parent_id = cached_task.get("parent_id") if cached_task else None
+        if not raw_parent_id:
+            raw_parent_id = extra.get("parent_id")
         if not raw_parent_id:
             raw_parent_id = event.get("parent_item_id")
 

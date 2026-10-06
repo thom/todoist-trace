@@ -2,7 +2,7 @@
 Unit tests for record filtering (category and date range).
 """
 
-from todoist_trace.filters import filter_records
+from todoist_trace.filters import deduplicate_records, filter_records
 
 
 class TestFiltering:
@@ -119,3 +119,48 @@ class TestFiltering:
         assert get_project_category("client-omega", cfg) == "work"
         assert get_project_category("hobby", cfg) == "personal"
         assert get_project_category("unassigned", cfg) == "others"
+
+    def test_deduplicate_records_same_day_keeps_latest(self):
+        records = [
+            {
+                "date": "2026-09-01",
+                "time": "11:36:18",
+                "event_date": "2026-09-01T09:36:18Z",
+                "task_id": "tid_alpha",
+                "task_path": "Feature Proposal / Initial Name",
+                "event_id": "ev_old",
+            },
+            {
+                "date": "2026-09-01",
+                "time": "11:38:40",
+                "event_date": "2026-09-01T09:38:40Z",
+                "task_id": "tid_alpha",
+                "task_path": "Feature Proposal / Renamed Feature Proposal",
+                "event_id": "ev_new",
+            },
+        ]
+        res = deduplicate_records(records)
+        assert len(res) == 1
+        assert res[0]["event_id"] == "ev_new"
+        assert res[0]["task_path"] == "Feature Proposal / Renamed Feature Proposal"
+
+    def test_deduplicate_records_preserves_different_days(self):
+        records = [
+            {
+                "date": "2026-09-01",
+                "time": "10:00:00",
+                "task_id": "tid_recurring",
+                "task_path": "Weekly sync",
+                "event_id": "ev_d1",
+            },
+            {
+                "date": "2026-09-08",
+                "time": "10:00:00",
+                "task_id": "tid_recurring",
+                "task_path": "Weekly sync",
+                "event_id": "ev_d2",
+            },
+        ]
+        res = deduplicate_records(records)
+        assert len(res) == 2
+        assert {r["date"] for r in res} == {"2026-09-01", "2026-09-08"}

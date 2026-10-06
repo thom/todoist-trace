@@ -929,9 +929,18 @@ class SQLiteTraceCache:
         cur = self.conn.cursor()
         cur.execute(query, params)
         results = []
+        seen = set()
         for row in cur.fetchall():
             try:
-                results.append(json.loads(row[0]))
+                rec = json.loads(row[0])
+                tid = str(rec.get("task_id") or "").strip()
+                dt = str(rec.get("date") or "").strip()
+                if tid and dt:
+                    key = (dt, tid)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                results.append(rec)
             except Exception:
                 pass
         return results
