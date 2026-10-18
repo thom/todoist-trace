@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "todoist-trace"
 version = "0.1.0"
-description = "Sync and export Todoist activity logs with project, section, and task hierarchy resolution."
+description = "Interactive HTML dashboard and Markdown/CSV exporter to explore your Todoist activity with full project & task hierarchies."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -35,6 +35,11 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/thom/todoist-trace"
+Repository = "https://github.com/thom/todoist-trace.git"
+Issues = "https://github.com/thom/todoist-trace/issues"
 
 [project.scripts]
 todoist-trace = "todoist_trace.main:main"

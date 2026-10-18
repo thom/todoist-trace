@@ -1,29 +1,29 @@
 # todoist-trace
 
-A robust, read-only Python CLI tool to export Todoist activity logs into structured CSV and Markdown files with multi-level project and task hierarchy resolution, local timezone normalization, interval-aware SQLite caching, and live visual progress reporting.
+Interactive HTML dashboard and structured Markdown/CSV exporter to explore your Todoist completed task activity—featuring multi-level project, section, and subtask hierarchy resolution, local timezone normalization, interval-aware SQLite caching, and live visual progress reporting.
 
 ---
 
 ## Features
 
-- **Multi-Level Project Tree Resolution**: Automatically traverses project hierarchies of arbitrary depth (e.g., `work-areas / admin / email / vendor-contracts`) to extract the root ancestor and relative project paths. Handles archived projects seamlessly.
-- **Project Section Resolution**: Automatically resolves Todoist section IDs to section names (e.g. `Sprint Deliverables`, `Sprint 1`), grouping tasks under section subheadings in Markdown and providing a dedicated `section` column in CSV exports.
+- **Interactive HTML Dashboard Export**:
+  - Standalone, self-contained single-page dashboard with zero external dependencies (works 100% offline).
+  - KPI metric cards (total tasks, active days, tasks/day velocity, on-time completion rate, top projects).
+  - Interactive SVG charts (daily activity velocity timeline with clickable day filtering, project share breakdown).
+  - Dual-calendar date range picker with quick period presets (Current/Previous Week, Month, Quarter, Year, All Time) and multi-select filters across categories, parent projects, specific projects, priorities, due statuses, and `@tag` pills.
+  - Three distinct view modes: Collapsible Daily Timeline, Project Tree Hierarchy, and Sortable Data Table.
+  - Built-in Dark and Light mode toggle with auto-detection and persistence.
+- **Hierarchical Markdown & RFC 4180 CSV Exports**:
+  - Structured Markdown heading levels by project depth and section (`## Date` -> `### Root Project` -> `#### Sub-project` -> `##### Section`) with nested task bullet trees.
+  - Clean, standard CSV output escaping commas, quotes, and newlines (`top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id`).
+- **Multi-Level Project Tree Resolution**: Automatically traverses project hierarchies of arbitrary depth (e.g., `work-areas / admin / email / vendor-contracts`) to extract the root ancestor and relative project paths, preserving parent-child relationships across archived projects via `~/.todoist-trace/hierarchy.json`.
+- **Project Section Resolution**: Automatically resolves active and archived Todoist section IDs to section names (e.g. `Sprint Deliverables`, `Sprint 1`), grouping tasks under section subheadings in HTML/Markdown and providing a dedicated `section` column in CSV exports.
 - **Recursive Task Ancestry Resolution**: Reconstructs deep parent-child subtask relationships (e.g., `Sprint Planning / Backend / Authentication Service`) by querying and caching task parentage.
 - **Local Timezone Normalization**: Automatically converts Todoist UTC activity timestamps into the user's local timezone (or configured IANA timezone, e.g. `Europe/Zurich`), ensuring cross-midnight tasks are attributed to the true local calendar day.
 - **Interactive Visual Progress Reporting**:
   - Displays a clean boxed metadata header with active range, calendar day count, timezone, and cache path.
   - Live Unicode block progress bar (`[██████████░░░░░░░░]`), Braille animation spinner, calendar day completion percentage, throughput (`tasks/s`), and remaining time countdown (`ETA MM:SS`).
   - Automatically adapts to terminal width (`shutil.get_terminal_size()`) and collapses to clean milestone logs when piped or running in CI (`NO_COLOR` standard compliant).
-- **Hierarchical Markdown Export**:
-  - Structured heading levels by project depth and section (`## Date` -> `### Root Project` -> `#### Sub-project` -> `##### Section`).
-- **Interactive HTML Dashboard Export**:
-  - Standalone, self-contained single-page dashboard with zero external dependencies (works 100% offline).
-  - KPI metric cards (total tasks, active days, tasks/day velocity, on-time completion rate, top projects).
-  - Interactive SVG charts (daily activity velocity timeline with clickable day filtering, project share breakdown).
-  - Multi-dimensional filters (search box, category, parent project, specific project, priority, due status, @tag filter).
-  - Three distinct view modes: Collapsible Daily Timeline, Project Tree Hierarchy, and Sortable Data Table.
-  - Built-in Dark and Light mode toggle with auto-detection and persistence.
-- **RFC 4180 Compliant CSV Export**: Clean, standard CSV output escaping commas, quotes, and newlines (`top_level_project,project_path,section,date,time,task_path,parent_task_id,project_id,event_id`).
 - **Interval-Aware SQLite Cache Engine**:
   - Automatically caches projects, sections, tasks, completed events, and synchronized date ranges in `~/.todoist-trace/cache.db`.
   - Coalesces contiguous intervals across runs, avoiding redundant API calls while tracking zero-activity days permanently.
@@ -79,6 +79,12 @@ todoist-trace/
 - `pip`
 
 ### Installation Methods
+
+Clone the repository:
+```bash
+git clone https://github.com/thom/todoist-trace.git
+cd todoist-trace
+```
 
 #### Option A: Isolated Global CLI Install with `pipx` (Recommended)
 Installs `todoist-trace` globally into `~/.local/bin/` within an isolated environment:
