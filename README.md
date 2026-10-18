@@ -2,6 +2,16 @@
 
 Interactive HTML dashboard and structured Markdown/CSV exporter to explore your Todoist completed task activity—with full project, section, and subtask hierarchy resolution.
 
+![Interactive HTML Dashboard — Dark Mode (Timeline View)](docs/screenshots/dashboard-dark.png)
+
+<details>
+<summary><b>View Light Mode & Projects Hierarchy Screenshot</b></summary>
+<br>
+
+![Interactive HTML Dashboard — Light Mode (Projects Hierarchy View)](docs/screenshots/dashboard-light.png)
+
+</details>
+
 ## Features
 
 - **Interactive HTML Dashboard**:
